@@ -79,7 +79,7 @@
             </div>
             <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
                 <h2 class="text-lg font-semibold mb-6">Historique</h2>
-                <table id="employee-requests-table" class="w-full">
+                <table id="employee-requests-table" classholy="w-full">
                     <thead class="bg-gray-50 dark:bg-gray-700">
                         <tr><th>Type</th><th>Date</th><th>Détails</th><th>Statut</th></tr>
                     </thead>
@@ -136,10 +136,7 @@
                     { id: 76, name: "ALILI HOUSSEM", email: "ALILIHOUSSEM@EASYWAYELECTO.COM", role: "Responsable", password: "1234" },
                     { id: 1, name: "John Doe", email: "john.doe@example.com", role: "Employé", password: "1234" }
                 ];
-                appData.users = await Promise.all(defaultUsers.map(async u => ({
-                    ...u,
-                    password: await hashPassword(u.password)
-                })));
+                appData.users = await Promise.all(defaultUsers.map(async u => ({ ...u, password: await hashPassword(u.password) })));
             } else {
                 appData.users = JSON.parse(users);
             }
