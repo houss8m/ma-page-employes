@@ -1251,20 +1251,616 @@
 
           if (updatedCount === 0) return showNotification("Aucun solde mis à jour.", "error");
 
-          saveToLocalStorage();
-          syncToCloud();
-          fileInput.value = '';
-          updateLeaveBalanceDisplay();
-          showNotification(`${updatedCount} solde(s) mis à jour.`, "success");
-        };
-        reader.readAsArrayBuffer(file);
-      });
-    }
+         saveToLocalStorage();
+         // Synchronisation avec le cloud après import de nouveaux soldes
+         syncWithCloud();
+         
+         fileInput.value = '';
+         updateLeaveBalanceDisplay();
+         showNotification(`${updatedCount} solde(s) de congé mis à jour avec succès.`, "success");
+       } catch (error) {
+         console.error("Erreur lors de l'importation des soldes:", error);
+         showNotification("Une erreur est survenue lors de l'importation des soldes de congés.", "error");
+       }
+     };
+     reader.onerror = function() {
+       showNotification("Erreur lors de la lecture du fichier des soldes.", "error");
+     };
+     reader.readAsArrayBuffer(file);
+   });
+ }
 
-    // Configurer le bouton d'ajout d'utilisateur
-    function setupAddUserBtn() {
-      document.getElementById('add-user-btn').addEventListener('click', showAddUserModal);
-    }
+ // Configuration du bouton d'ajout d'utilisateur
+ function setupAddUserBtn() {
+   document.getElementById('add-user-btn').addEventListener('click', function() {
+     showAddUserModal();
+   });
+ }
 
-    // Afficher la modal d'ajout d'utilisateur
-    function showAddUserModal()
+ // Affichage de la modal d'ajout d'utilisateur
+ function showAddUserModal() {
+   const modalContent = `
+     <div class="space-y-4">
+       <div>
+         <label for="new-user-id" class="block text-sm font-medium text-gray-700 dark:text-gray-300">ID</label>
+         <input type="number" id="new-user-id" class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white" placeholder="ID numérique">
+       </div>
+       <div>
+         <label for="new-user-name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Nom complet</label>
+         <input type="text" id="new-user-name" class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white" placeholder="Prénom Nom">
+       </div>
+       <div>
+         <label for="new-user-email" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
+         <input type="email" id="new-user-email" class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white" placeholder="email@example.com">
+       </div>
+       <div>
+         <label for="new-user-role" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Rôle</label>
+         <select id="new-user-role" class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white">
+           <option value="Employé">Employé</option>
+           <option value="Responsable">Responsable</option>
+         </select>
+       </div>
+       <div>
+         <label for="new-user-password" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Mot de passe</label>
+         <input type="password" id="new-user-password" class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white" placeholder="••••••••">
+       </div>
+     </div>
+   `;
+   const modalActions = `
+     <button id="confirm-add-user" class="inline-flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+       Ajouter l'utilisateur
+     </button>
+     <button class="modal-close inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+       Annuler
+     </button>
+   `;
+   showModal(`Ajouter un nouvel utilisateur`, modalContent, modalActions);
+   document.getElementById('confirm-add-user').addEventListener('click', addNewUser);
+ }
+
+ // Ajout d'un nouvel utilisateur
+ async function addNewUser() {
+   const idInput = document.getElementById('new-user-id');
+   const nameInput = document.getElementById('new-user-name');
+   const emailInput = document.getElementById('new-user-email');
+   const roleInput = document.getElementById('new-user-role');
+   const passwordInput = document.getElementById('new-user-password');
+
+   const id = parseInt(idInput.value.trim());
+   const name = nameInput.value.trim();
+   const email = emailInput.value.trim();
+   const role = roleInput.value;
+   const password = passwordInput.value;
+
+   // Validation des entrées
+   if (!id || isNaN(id)) {
+     showNotification("L'ID doit être un nombre valide.", "error");
+     return;
+   }
+   if (!name) {
+     showNotification("Le nom est requis.", "error");
+     return;
+   }
+   if (!email || !email.includes('@')) {
+     showNotification("L'email doit être valide.", "error");
+     return;
+   }
+   if (!password) {
+     showNotification("Le mot de passe est requis.", "error");
+     return;
+   }
+
+   // Vérification si l'ID ou l'email existe déjà
+   if (appData.users.some(u => u.id === id)) {
+     showNotification(`Un utilisateur avec l'ID ${id} existe déjà.`, "error");
+     return;
+   }
+   if (appData.users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
+     showNotification(`Un utilisateur avec l'email ${email} existe déjà.`, "error");
+     return;
+   }
+
+   try {
+     // Ajout du nouvel utilisateur
+     const hashedPassword = await hashPassword(password);
+     const newUser = { id, name, email, role, password: hashedPassword };
+     appData.users.push(newUser);
+
+     // Initialisation des soldes de congés si c'est un employé
+     if (role === "Employé") {
+       initializeLeaveBalances(id);
+     }
+
+     saveToLocalStorage();
+     // Synchronisation avec le cloud après ajout d'un nouvel utilisateur
+     syncWithCloud();
+     
+     updateUsersTable();
+     closeModal();
+     showNotification(`L'utilisateur ${name} a été ajouté avec succès.`, "success");
+   } catch (error) {
+     console.error("Erreur lors de l'ajout de l'utilisateur:", error);
+     showNotification("Une erreur est survenue lors de l'ajout de l'utilisateur.", "error");
+   }
+ }
+
+ // Affichage de la modal d'édition d'utilisateur
+ function showEditUserModal(userId) {
+   const user = appData.users.find(u => u.id === userId);
+   if (!user) return;
+
+   const modalContent = `
+     <div class="space-y-4">
+       <div>
+         <label for="edit-user-name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Nom complet</label>
+         <input type="text" id="edit-user-name" value="${user.name}" class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white" placeholder="Prénom Nom">
+       </div>
+       <div>
+         <label for="edit-user-email" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
+         <input type="email" id="edit-user-email" value="${user.email}" class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white" placeholder="email@example.com">
+       </div>
+       <div>
+         <label for="edit-user-role" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Rôle</label>
+         <select id="edit-user-role" class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white">
+           <option value="Employé" ${user.role === "Employé" ? "selected" : ""}>Employé</option>
+           <option value="Responsable" ${user.role === "Responsable" ? "selected" : ""}>Responsable</option>
+         </select>
+       </div>
+       <div>
+         <label for="edit-user-password" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Nouveau mot de passe (laisser vide pour conserver l'actuel)</label>
+         <input type="password" id="edit-user-password" class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white" placeholder="••••••••">
+       </div>
+     </div>
+   `;
+   const modalActions = `
+     <button id="confirm-edit-user" data-user-id="${userId}" class="inline-flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+       Enregistrer les modifications
+     </button>
+     <button class="modal-close inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+       Annuler
+     </button>
+   `;
+   showModal(`Modifier l'utilisateur ${user.name}`, modalContent, modalActions);
+   document.getElementById('confirm-edit-user').addEventListener('click', function() {
+     editUser(userId);
+   });
+ }
+
+ // Édition d'un utilisateur
+ async function editUser(userId) {
+   const user = appData.users.find(u => u.id === userId);
+   if (!user) return;
+
+   const nameInput = document.getElementById('edit-user-name');
+   const emailInput = document.getElementById('edit-user-email');
+   const roleInput = document.getElementById('edit-user-role');
+   const passwordInput = document.getElementById('edit-user-password');
+
+   const newName = nameInput.value.trim();
+   const newEmail = emailInput.value.trim();
+   const newRole = roleInput.value;
+   const newPassword = passwordInput.value;
+
+   // Validation des entrées
+   if (!newName) {
+     showNotification("Le nom est requis.", "error");
+     return;
+   }
+   if (!newEmail || !newEmail.includes('@')) {
+     showNotification("L'email doit être valide.", "error");
+     return;
+   }
+
+   // Vérification si l'email existe déjà (sauf pour cet utilisateur)
+   if (appData.users.some(u => u.id !== userId && u.email.toLowerCase() === newEmail.toLowerCase())) {
+     showNotification(`Un autre utilisateur avec l'email ${newEmail} existe déjà.`, "error");
+     return;
+   }
+
+   try {
+     // Mise à jour de l'utilisateur
+     const oldRole = user.role;
+     user.name = newName;
+     user.email = newEmail;
+     user.role = newRole;
+
+     // Mise à jour du mot de passe si fourni
+     if (newPassword) {
+       user.password = await hashPassword(newPassword);
+     }
+
+     // Gérer les changements de rôle
+     if (oldRole !== newRole) {
+       if (newRole === "Employé") {
+         // Si changement vers Employé, initialiser les soldes de congés
+         initializeLeaveBalances(userId);
+       } else if (newRole === "Responsable") {
+         // Si changement vers Responsable, on pourrait supprimer les soldes de congés
+         // Mais on les garde au cas où l'utilisateur redevient employé
+       }
+
+       // Si l'utilisateur actuellement connecté est modifié
+       if (appData.currentUser && appData.currentUser.id === userId) {
+         appData.currentUser = user;
+         document.querySelector('.user-role').textContent = newRole;
+         // Rediriger vers la bonne vue en fonction du nouveau rôle
+         showView(newRole === "Employé" ? 'employee-view' : 'manager-view');
+       }
+     }
+
+     saveToLocalStorage();
+     // Synchronisation avec le cloud après modification d'un utilisateur
+     syncWithCloud();
+     
+     updateUsersTable();
+     closeModal();
+     showNotification(`L'utilisateur ${newName} a été modifié avec succès.`, "success");
+   } catch (error) {
+     console.error("Erreur lors de la modification de l'utilisateur:", error);
+     showNotification("Une erreur est survenue lors de la modification de l'utilisateur.", "error");
+   }
+ }
+
+ // Affichage de la modal de suppression d'utilisateur
+ function showDeleteUserModal(userId) {
+   const user = appData.users.find(u => u.id === userId);
+   if (!user) return;
+
+   // Empêcher la suppression de l'utilisateur actuellement connecté
+   if (appData.currentUser && appData.currentUser.id === userId) {
+     showNotification("Vous ne pouvez pas supprimer votre propre compte pendant que vous êtes connecté.", "error");
+     return;
+   }
+
+   const modalContent = `
+     <p class="text-gray-700 dark:text-gray-300">
+       Êtes-vous sûr de vouloir supprimer l'utilisateur <strong>${user.name}</strong> ?
+
+       Cette action est irréversible et supprimera également toutes les demandes associées.
+     </p>
+   `;
+   const modalActions = `
+     <button id="confirm-delete-user" data-user-id="${userId}" class="inline-flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+       Supprimer définitivement
+     </button>
+     <button class="modal-close inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+       Annuler
+     </button>
+   `;
+   showModal(`Supprimer l'utilisateur`, modalContent, modalActions);
+   
+   // Ajouter un effet shake au bouton de confirmation pour avertir l'utilisateur
+   const confirmButton = document.getElementById('confirm-delete-user');
+   confirmButton.classList.add('confirm-btn-shake');
+   
+   confirmButton.addEventListener('click', function() {
+     deleteUser(userId);
+   });
+ }
+
+ // Suppression d'un utilisateur
+ function deleteUser(userId) {
+   // Supprimer l'utilisateur
+   appData.users = appData.users.filter(u => u.id !== userId);
+   
+   // Supprimer ses demandes
+   appData.requests = appData.requests.filter(req => req.employeeId !== userId);
+   
+   // Supprimer ses soldes de congés
+   if (appData.leaveBalances[userId]) {
+     delete appData.leaveBalances[userId];
+   }
+   
+   saveToLocalStorage();
+   // Synchronisation avec le cloud après suppression d'un utilisateur
+   syncWithCloud();
+   
+   updateUsersTable();
+   updateManagerRequestsTables();
+   closeModal();
+   showNotification("L'utilisateur a été supprimé avec succès.", "success");
+ }
+
+ // Configuration du bouton de réinitialisation des données
+ function setupResetDataBtn() {
+   document.getElementById('reset-data-btn').addEventListener('click', function() {
+     showResetConfirmationModal();
+   });
+ }
+
+ // Affichage de la modal de confirmation de réinitialisation
+ function showResetConfirmationModal() {
+   const modalContent = `
+     <p class="text-gray-700 dark:text-gray-300">
+       <i class="fas fa-exclamation-triangle text-yellow-500 mr-2"></i>
+       <strong>Attention :</strong> Vous êtes sur le point de réinitialiser toutes les données de l'application.
+       Cette action supprimera :
+       <ul class="list-disc list-inside mt-2 ml-2 space-y-1">
+         <li>Tous les utilisateurs (sauf les utilisateurs par défaut)</li>
+         <li>Toutes les demandes (congés, autorisations, avances)</li>
+         <li>Tous les soldes de congés personnalisés</li>
+       </ul>
+       
+
+       Cette action est irréversible. Voulez-vous continuer ?
+     </p>
+   `;
+   const modalActions = `
+     <button id="confirm-reset" class="inline-flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+       Réinitialiser toutes les données
+     </button>
+     <button class="modal-close inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+       Annuler
+     </button>
+   `;
+   showModal(`Réinitialisation des données`, modalContent, modalActions);
+   
+   // Ajouter un effet shake au bouton de confirmation
+   const confirmButton = document.getElementById('confirm-reset');
+   confirmButton.classList.add('confirm-btn-shake');
+   
+   confirmButton.addEventListener('click', function() {
+     resetToDefaultData();
+     closeModal();
+   });
+ }
+
+ // Réinitialisation des données par défaut
+ async function resetToDefaultData() {
+   try {
+     showLoading("Réinitialisation des données", "Veuillez patienter pendant que les données sont réinitialisées...");
+     
+     // Créer les utilisateurs par défaut
+     const defaultUsers = [
+       { id: 76, name: "ALILI HOUSSEM", email: "ALILIHOUSSEM@EASYWAYELECTO.COM", role: "Responsable", password: await hashPassword("1234") },
+       { id: 1, name: "John Doe", email: "john.doe@example.com", role: "Employé", password: await hashPassword("1234") }
+     ];
+     
+     appData.users = defaultUsers;
+     appData.requests = [];
+     appData.leaveBalances = {};
+     
+     // Initialisation des soldes de congés pour les utilisateurs par défaut
+     defaultUsers.forEach(user => {
+       if (user.role === "Employé") {
+         initializeLeaveBalances(user.id);
+       }
+     });
+     
+     saveToLocalStorage();
+     // Synchronisation avec le cloud après réinitialisation
+     await syncWithCloud(true);
+     
+     // Mettre à jour l'interface si l'utilisateur est connecté
+     if (appData.currentUser) {
+       const userStillExists = appData.users.find(u => u.id === appData.currentUser.id);
+       if (userStillExists) {
+         appData.currentUser = userStillExists;
+         if (appData.currentUser.role === "Employé") {
+           updateLeaveBalanceDisplay();
+           updateEmployeeRequestsTable();
+         } else if (appData.currentUser.role === "Responsable") {
+           updateManagerRequestsTables();
+           updateUsersTable();
+         }
+       } else {
+         // L'utilisateur n'existe plus après réinitialisation
+         logout();
+       }
+     }
+     
+     hideLoading();
+     showNotification("Les données ont été réinitialisées avec succès.", "success");
+   } catch (error) {
+     console.error("Erreur lors de la réinitialisation des données:", error);
+     hideLoading();
+     showNotification("Une erreur est survenue lors de la réinitialisation des données.", "error");
+   }
+ }
+
+ // Configuration du bouton d'exportation des données
+ function setupExportDataBtn() {
+   document.getElementById('export-data-btn').addEventListener('click', function() {
+     exportToExcel();
+   });
+ }
+
+ // Configuration du bouton de synchronisation
+ function setupSyncDataBtn() {
+   document.getElementById('sync-data-btn').addEventListener('click', function() {
+     syncWithCloud(true);
+   });
+ }
+
+ // Exportation des données vers Excel
+ function exportToExcel() {
+   try {
+     // Créer un nouveau classeur
+     const wb = XLSX.utils.book_new();
+     
+     // Feuille des utilisateurs
+     const usersData = appData.users.map(user => ({
+       ID: user.id,
+       Nom: user.name,
+       Email: user.email,
+       Rôle: user.role
+     }));
+     const usersSheet = XLSX.utils.json_to_sheet(usersData);
+     XLSX.utils.book_append_sheet(wb, usersSheet, "Utilisateurs");
+     
+     // Feuille des soldes de congés
+     const leaveBalancesData = [];
+     for (const userId in appData.leaveBalances) {
+       const user = getUserById(parseInt(userId));
+       if (user && user.name !== "Employé inconnu") {
+         leaveBalancesData.push({
+           ID: parseInt(userId),
+           Nom: user.name,
+           Email: user.email,
+           "Congés Annuels": appData.leaveBalances[userId].annual,
+           "Congés Exceptionnels": appData.leaveBalances[userId].exceptional,
+           "Congés Récupération": appData.leaveBalances[userId].recovery
+         });
+       }
+     }
+     if (leaveBalancesData.length > 0) {
+       const leaveBalancesSheet = XLSX.utils.json_to_sheet(leaveBalancesData);
+       XLSX.utils.book_append_sheet(wb, leaveBalancesSheet, "Soldes de congés");
+     }
+     
+     // Feuille des demandes
+     const requestsData = appData.requests.map(req => {
+       const employee = getUserById(req.employeeId);
+       return {
+         ID: req.id,
+         "Employé": employee.name,
+         "Email Employé": employee.email,
+         Type: req.type,
+         Date: req.date,
+         Détails: req.details,
+         Statut: req.status,
+         "Créé le": new Date(req.createdAt).toLocaleString(),
+         Commentaire: req.comment
+       };
+     });
+     if (requestsData.length > 0) {
+       const requestsSheet = XLSX.utils.json_to_sheet(requestsData);
+       XLSX.utils.book_append_sheet(wb, requestsSheet, "Demandes");
+     }
+     
+     // Générer le fichier Excel
+     const now = new Date();
+     const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+     const fileName = `export-gestion-conges-${dateStr}.xlsx`;
+     
+     XLSX.writeFile(wb, fileName);
+     showNotification("Les données ont été exportées avec succès.", "success");
+   } catch (error) {
+     console.error("Erreur lors de l'exportation des données:", error);
+     showNotification("Une erreur est survenue lors de l'exportation des données. Vérifiez les instructions du fabricant pour télécharger l'Excel manuellement.", "error");
+     
+     // Message alternatif sur la façon dont un utilisateur peut exporter manuellement les données
+     showModal("Exportation des données", `
+       <p class="text-gray-700 dark:text-gray-300">
+         L'exportation automatique a échoué. Vous pouvez exporter manuellement les données en suivant ces étapes :
+         <ol class="list-decimal list-inside mt-2 ml-2 space-y-1">
+           <li>Ouvrez la console développeur (F12 ou Ctrl+Shift+I)</li>
+           <li>Copiez et collez la commande suivante :</li>
+         </ol>
+         <div class="mt-2 bg-gray-100 dark:bg-gray-700 p-2 rounded">
+           <code>console.log(JSON.stringify({users: appData.users, requests: appData.requests, leaveBalances: appData.leaveBalances}))</code>
+         </div>
+         <p class="mt-2">Puis sauvegardez la sortie dans un fichier texte.</p>
+       </p>
+     `, `<button class="modal-close inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">Fermer</button>`);
+   }
+ }
+
+ // Initialisation de l'application
+ async function initApp() {
+   try {
+     // Afficher l'écran de chargement initial
+     showLoading("Initialisation de l'application", "Chargement des données...");
+     
+     // Vérifier si l'API Poe est disponible
+     if (!window.Poe) {
+       console.error("L'API Poe n'est pas disponible. Utilisation du mode hors ligne uniquement.");
+       updateSyncStatus('offline', "API non disponible");
+       hideLoading();
+       
+       // Chargement des données locales
+       await loadFromLocalStorage();
+       
+       // Mise en place des différents gestionnaires d'événements
+       setupLoginForm();
+       setupLeaveForm();
+       setupLeaveRequestForm();
+       setupAdvanceRequestForm();
+       setupExcelImport();
+       setupLeaveBalanceImport();
+       setupAddUserBtn();
+       setupResetDataBtn();
+       setupExportDataBtn();
+       setupSyncDataBtn();
+       
+       // Initialisation des champs de date avec la date du jour
+       initDateFields();
+       
+       // Affichage de la vue de connexion
+       showView('login-view');
+       
+       showNotification("Mode hors ligne activé. Certaines fonctionnalités ne seront pas disponibles.", "error");
+       return;
+     }
+     
+     // Chargement des données locales en premier pour l'affichage rapide
+     await loadFromLocalStorage();
+     
+     // Ensuite, essayer de récupérer les données depuis le cloud
+     await fetchFromCloud();
+     
+     // Mise en place de la synchronisation périodique
+     setupPeriodicSync();
+     
+     // Mise en place des différents gestionnaires d'événements
+     setupLoginForm();
+     setupLeaveForm();
+     setupLeaveRequestForm();
+     setupAdvanceRequestForm();
+     setupExcelImport();
+     setupLeaveBalanceImport();
+     setupAddUserBtn();
+     setupResetDataBtn();
+     setupExportDataBtn();
+     setupSyncDataBtn();
+     
+     // Initialisation des champs de date avec la date du jour
+     initDateFields();
+     
+     // Affichage de la vue de connexion
+     showView('login-view');
+     
+     console.log("Application initialisée avec succès");
+   } catch (error) {
+     console.error("Erreur lors de l'initialisation de l'application:", error);
+     hideLoading();
+     showNotification("Une erreur est survenue lors de l'initialisation de l'application.", "error");
+     
+     // Fallback vers le mode local uniquement
+     await loadFromLocalStorage();
+     updateSyncStatus('offline', "Erreur d'initialisation");
+     
+     // Mise en place des différents gestionnaires d'événements en mode dégradé
+     setupLoginForm();
+     setupLeaveForm();
+     setupLeaveRequestForm();
+     setupAdvanceRequestForm();
+     setupExcelImport();
+     setupLeaveBalanceImport();
+     setupAddUserBtn();
+     setupResetDataBtn();
+     setupExportDataBtn();
+     
+     // Initialisation des champs de date avec la date du jour
+     initDateFields();
+     
+     // Affichage de la vue de connexion
+     showView('login-view');
+   }
+ }
+
+ // Initialisation des champs de date
+ function initDateFields() {
+   const today = new Date().toISOString().split('T')[0];
+   document.getElementById('leave-date').setAttribute('min', today);
+   document.getElementById('leave-date').value = today;
+   document.getElementById('advance-date').setAttribute('min', today);
+   document.getElementById('advance-date').value = today;
+   document.getElementById('leave-start-date').setAttribute('min', today);
+   document.getElementById('leave-end-date').setAttribute('min', today);
+ }
+
+ // Démarrage de l'application lorsque le DOM est chargé
+ document.addEventListener('DOMContentLoaded', initApp);
+</script>
+
