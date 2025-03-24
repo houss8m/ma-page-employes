@@ -8,6 +8,8 @@
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script>
+    console.log("Début du chargement des scripts");
+
     tailwind.config = {
       darkMode: 'class',
       theme: {
@@ -30,7 +32,6 @@
       }
     }
 
-    // Gestion du mode sombre
     if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
       document.documentElement.classList.add('dark');
     }
@@ -39,16 +40,97 @@
     });
   </script>
   <style>
-    /* Styles CSS inchangés */
-    /* ... (le code CSS reste identique à celui fourni) ... */
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+    body { 
+      font-family: 'Roboto', sans-serif; 
+      min-height: 100vh;
+      background-color: #f9fafb;
+    }
+    .notification { 
+      animation: fadeIn 0.5s, fadeOut 0.5s 2.5s forwards; 
+      pointer-events: none; 
+    }
+    @keyframes fadeIn { 
+      from { opacity: 0; transform: translateY(-20px); } 
+      to { opacity: 1; transform: translateY(0); } 
+    }
+    @keyframes fadeOut { 
+      from { opacity: 1; transform: translateY(0); } 
+      to { opacity: 0; transform: translateY(-20px); } 
+    }
+    .view-transition { 
+      animation: fadeInView 0.3s ease-out; 
+    }
+    @keyframes fadeInView { 
+      from { opacity: 0; } 
+      to { opacity: 1; } 
+    }
+    .hidden { display: none; }
   </style>
 </head>
 <body class="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
-  <!-- HTML structure inchangée -->
-  <!-- ... (le code HTML reste identique à celui fourni) ... -->
+  <div id="notification-container" class="fixed top-4 right-4 z-50 pointer-events-none"></div>
+  <div id="app-loading" class="text-center p-4">Chargement de l'application...</div>
+
+  <header class="bg-white dark:bg-gray-800 shadow hidden" id="app-header">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+      <div class="flex items-center">
+        <div class="flex-shrink-0">
+          <div class="h-10 w-10 rounded-full bg-primary-500 flex items-center justify-center text-white font-bold text-lg">AS</div>
+        </div>
+        <h1 class="ml-3 text-xl font-bold text-gray-900 dark:text-white">Autorisations de Sortie, Avances & Congés</h1>
+      </div>
+      <div id="user-info" class="flex items-center">
+        <div class="mr-3 text-sm text-right">
+          <p class="font-medium user-name">Non connecté</p>
+          <p class="text-gray-500 dark:text-gray-400 user-role"></p>
+        </div>
+        <button id="logout-button" class="hidden text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+          <i class="fas fa-sign-out-alt"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div id="login-view" class="view-transition hidden">
+      <div class="max-w-md mx-auto bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
+        <div class="p-6">
+          <h2 class="text-2xl font-bold text-center mb-6">Connexion</h2>
+          <div class="space-y-4">
+            <div>
+              <label for="email" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
+              <input type="email" id="email" class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white" placeholder="Entrez votre email">
+            </div>
+            <div
+              <label for="password" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Mot de passe</label>
+              <input type="password" id="password" class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white" placeholder="••••••••">
+            </div>
+            <div>
+              <button id="btn-login-email" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                <i class="fas fa-sign-in-alt mr-2"></i> Se connecter
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="employee-view" class="view-transition hidden">
+      <h2 class="text-lg font-semibold mb-6">Bienvenue, Employé</h2>
+      <!-- Ajoutez ici le contenu complet de employee-view si nécessaire -->
+    </div>
+
+    <div id="manager-view" class="view-transition hidden">
+      <h2 class="text-lg font-semibold mb-6">Bienvenue, Responsable</h2>
+      <!-- Ajoutez ici le contenu complet de manager-view si nécessaire -->
+    </div>
+  </main>
 
   <script>
-    // Structure des données de l'application
+    console.log("Début du script principal");
+
+    // Structure des données
     const appData = {
       users: [],
       requests: [],
@@ -61,79 +143,79 @@
     const API_KEY = "monsecret123";
 
     // Fonctions utilitaires
-    function showLoading(message, details) {
-      const overlay = document.getElementById('loading-overlay');
-      document.getElementById('loading-message').textContent = message || "Chargement...";
-      document.getElementById('loading-details').textContent = details || "Veuillez patienter...";
-      overlay.classList.remove('hidden');
+    function showNotification(message, type = 'info') {
+      console.log(`Notification: ${message} (type: ${type})`);
+      const container = document.getElementById('notification-container');
+      if (!container) {
+        console.error("Conteneur de notification non trouvé");
+        return;
+      }
+      const notificationEl = document.createElement('div');
+      notificationEl.className = `notification mb-2 p-3 rounded-lg shadow-lg max-w-md ${
+        type === 'success' ? 'bg-green-100 text-green-800' : 
+        type === 'error' ? 'bg-red-100 text-red-800' : 
+        'bg-blue-100 text-blue-800'
+      }`;
+      notificationEl.innerHTML = `<span>${message}</span>`;
+      container.appendChild(notificationEl);
+      setTimeout(() => notificationEl.remove(), 3000);
     }
 
-    function hideLoading() {
-      document.getElementById('loading-overlay').classList.add('hidden');
-    }
-
-    function updateSyncStatus(status, message) {
-      const badge = document.getElementById('sync-status');
-      const text = document.getElementById('sync-text');
-      badge.className = "sync-badge";
-      switch(status) {
-        case 'online':
-          badge.classList.add('online');
-          badge.querySelector('i').className = 'fas fa-cloud-upload-alt';
-          text.textContent = message || "Synchronisé";
-          break;
-        case 'offline':
-          badge.classList.add('offline');
-          badge.querySelector('i').className = 'fas fa-cloud-slash';
-          text.textContent = message || "Hors ligne";
-          break;
-        case 'syncing':
-          badge.classList.add('syncing');
-          badge.querySelector('i').className = 'fas fa-sync-alt spin';
-          text.textContent = message || "Synchronisation...";
-          break;
+    function showView(viewId) {
+      console.log(`Tentative d'affichage de la vue: ${viewId}`);
+      document.querySelectorAll('main > div[id$="-view"]').forEach(view => {
+        view.classList.add('hidden');
+      });
+      const viewToShow = document.getElementById(viewId);
+      if (viewToShow) {
+        viewToShow.classList.remove('hidden');
+        document.getElementById('app-header').classList.remove('hidden');
+        console.log(`Vue ${viewId} affichée`);
+      } else {
+        console.error(`Vue ${viewId} non trouvée`);
       }
     }
 
     async function hashPassword(password) {
-      const encoder = new TextEncoder();
-      const data = encoder.encode(password);
-      const hash = await crypto.subtle.digest('SHA-256', data);
-      return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+      try {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(password);
+        const hash = await crypto.subtle.digest('SHA-256', data);
+        return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+      } catch (error) {
+        console.error("Erreur lors du hachage du mot de passe:", error);
+        return password; // Fallback en cas d'erreur
+      }
     }
 
     // Gestion du stockage local
     function saveToLocalStorage() {
       try {
         localStorage.setItem('users', JSON.stringify(appData.users));
-        localStorage.setItem('requests', JSON.stringify(appData.requests));
-        localStorage.setItem('leaveBalances', JSON.stringify(appData.leaveBalances));
-        localStorage.setItem('lastSync', appData.lastSync);
+        console.log("Données sauvegardées dans localStorage");
       } catch (error) {
-        console.error("Erreur lors de la sauvegarde locale:", error);
-        showNotification("Erreur lors de la sauvegarde locale.", "error");
+        console.error("Erreur lors de la sauvegarde dans localStorage:", error);
+        showNotification("Erreur de sauvegarde locale", "error");
       }
     }
 
     async function loadFromLocalStorage() {
       try {
         const users = localStorage.getItem('users');
-        if (users) appData.users = JSON.parse(users);
-        const requests = localStorage.getItem('requests');
-        if (requests) appData.requests = JSON.parse(requests);
-        const leaveBalances = localStorage.getItem('leaveBalances');
-        if (leaveBalances) appData.leaveBalances = JSON.parse(leaveBalances);
-        const lastSync = localStorage.getItem('lastSync');
-        if (lastSync) appData.lastSync = lastSync;
+        if (users) {
+          appData.users = JSON.parse(users);
+          console.log("Données chargées depuis localStorage:", appData.users);
+        }
         if (appData.users.length === 0) await createDefaultData();
         return true;
       } catch (error) {
-        console.error("Erreur lors du chargement local:", error);
+        console.error("Erreur lors du chargement depuis localStorage:", error);
         return false;
       }
     }
 
     async function createDefaultData() {
+      console.log("Création des données par défaut");
       const defaultUsers = [
         { id: 76, name: "ALILI HOUSSEM", email: "ALILIHOUSSEM@EASYWAYELECTO.COM", role: "Responsable", password: "1234" },
         { id: 1, name: "John Doe", email: "john.doe@example.com", role: "Employé", password: "1234" }
@@ -142,187 +224,95 @@
         ...u,
         password: await hashPassword(u.password)
       })));
-      appData.requests = [];
-      appData.leaveBalances = {};
-      for (const user of appData.users) {
-        if (user.role === "Employé") initializeLeaveBalances(user.id);
-      }
       saveToLocalStorage();
     }
 
-    // Gestion de la synchronisation avec le cloud
-    async function syncWithCloud(manual = false) {
-      try {
-        if (!navigator.onLine) {
-          updateSyncStatus('offline', 'Pas de connexion Internet');
-          showNotification("Pas de connexion Internet. Les données seront synchronisées lorsque la connexion sera rétablie.", "error");
+    // Gestion de la connexion
+    function setupLoginForm() {
+      console.log("Configuration du formulaire de connexion");
+      const loginBtn = document.getElementById('btn-login-email');
+      if (!loginBtn) {
+        console.error("Bouton de connexion non trouvé");
+        return;
+      }
+      loginBtn.addEventListener('click', async function(e) {
+        e.preventDefault();
+        console.log("Tentative de connexion");
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value;
+
+        if (!email || !password) {
+          showNotification("Veuillez remplir tous les champs", "error");
           return;
         }
 
-        showLoading("Synchronisation", "Mise à jour des données avec le cloud...");
-        updateSyncStatus('syncing', "Synchronisation...");
-
-        // Charger d'abord les données du cloud
-        await loadFromCloud();
-
-        // Puis synchroniser les demandes non synchronisées
-        const unsyncedRequests = appData.requests.filter(req => !req.synced);
-        for (const req of unsyncedRequests) {
-          await addToSheet("Demandes", [
-            req.id, req.type, req.date, req.details, req.status,
-            req.employeeId, req.managerId, req.createdAt, req.comment
-          ]);
-          req.synced = true;
+        try {
+          const hashedPassword = await hashPassword(password);
+          const user = appData.users.find(u => 
+            u.email.toLowerCase() === email.toLowerCase() && 
+            u.password === hashedPassword
+          );
+          
+          if (user) {
+            console.log("Utilisateur trouvé:", user);
+            login(user);
+          } else {
+            showNotification("Email ou mot de passe incorrect", "error");
+          }
+        } catch (error) {
+          console.error("Erreur lors de la connexion:", error);
+          showNotification("Erreur lors de la connexion", "error");
         }
-
-        appData.lastSync = new Date().toISOString();
-        saveToLocalStorage();
-
-        hideLoading();
-        updateSyncStatus('online', 'Synchronisé');
-        if (manual) showNotification("Synchronisation effectuée avec succès.", "success");
-
-        // Mettre à jour l'affichage
-        if (appData.currentUser) {
-          if (appData.currentUser.role === "Employé") {
-            updateEmployeeRequestsTable();
-            updateLeaveBalanceDisplay();
-          } else if (appData.currentUser.role === "Responsable") {
-            updateManagerRequestsTables();
-            updateUsersTable();
-          }
-        }
-      } catch (error) {
-        console.error("Erreur lors de la synchronisation:", error);
-        hideLoading();
-        updateSyncStatus('offline', 'Échec de synchronisation');
-        showNotification("Échec de la synchronisation avec le cloud.", "error");
-      }
+      });
     }
 
-    async function fetchFromCloud() {
-      await Promise.all([
-        fetchFromSheet("Utilisateurs").then(data => {
-          if (data) {
-            appData.users = data.slice(1).map(row => ({
-              id: row[0], name: row[1], email: row[2], role: row[3], password: row[4]
-            }));
-          }
-        }),
-        fetchFromSheet("Demandes").then(data => {
-          if (data) {
-            appData.requests = data.slice(1).map(row => ({
-              id: row[0], type: row[1], date: row[2], details: row[3], status: row[4],
-              employeeId: row[5], managerId: row[6], createdAt: row[7], comment: row[8],
-              synced: true
-            }));
-          }
-        }),
-        fetchFromSheet("SoldesCongés").then(data => {
-          if (data) {
-            appData.leaveBalances = {};
-            data.slice(1).forEach(row => {
-              appData.leaveBalances[row[0]] = {
-                annual: row[1], exceptional: row[2], recovery: row[3]
-              };
-            });
-          }
-        })
-      ]);
+    function login(user) {
+      console.log("Connexion de l'utilisateur:", user.name);
+      appData.currentUser = user;
+      document.querySelector('.user-name').textContent = user.name;
+      document.querySelector('.user-role').textContent = user.role;
+      document.getElementById('logout-button').classList.remove('hidden');
+      showView(user.role === "Employé" ? 'employee-view' : 'manager-view');
+      showNotification(`Bienvenue, ${user.name} !`, "success");
     }
 
-    async function fetchFromSheet(sheetName) {
-      try {
-        const response = await fetch(`${API_URL}?sheet=${sheetName}&key=${API_KEY}`);
-        if (!response.ok) throw new Error("Erreur réseau ou clé invalide");
-        return await response.json();
-      } catch (error) {
-        console.error(`Erreur lors de la récupération de ${sheetName}:`, error);
-        throw error;
-      }
-    }
-
-    async function addToSheet(sheetName, data) {
-      try {
-        const response = await fetch(`${API_URL}?sheet=${sheetName}&key=${API_KEY}`, {
-          method: "POST",
-          body: JSON.stringify(data),
-        });
-        if (!response.ok) throw new Error("Erreur réseau ou clé invalide");
-      } catch (error) {
-        console.error(`Erreur lors de l'ajout à ${sheetName}:`, error);
-        throw error;
-      }
-    }
-
-    // Le reste du code JavaScript reste identique jusqu'à initApp
-    // ...
-
+    // Initialisation
     async function initApp() {
+      console.log("Début de l'initialisation de l'application");
       try {
-        showLoading("Initialisation de l'application", "Chargement des données...");
-        
-        // Charger les données locales
+        // Afficher le message de chargement
+        const loadingEl = document.getElementById('app-loading');
+        if (!loadingEl) throw new Error("Élément de chargement non trouvé");
+
+        // Charger les données
         await loadFromLocalStorage();
-        
-        // Tenter une synchronisation initiale si connecté
-        if (navigator.onLine) {
-          await syncWithCloud();
-        } else {
-          updateSyncStatus('offline', 'Pas de connexion Internet');
-          showNotification("Application démarrée en mode hors ligne.", "info");
-        }
+        console.log("Nombre d'utilisateurs chargés:", appData.users.length);
 
-        // Configurer les gestionnaires d'événements
+        // Configurer le formulaire de connexion
         setupLoginForm();
-        setupLeaveForm();
-        setupLeaveRequestForm();
-        setupAdvanceRequestForm();
-        setupExcelImport();
-        setupLeaveBalanceImport();
-        setupAddUserBtn();
-        setupResetDataBtn();
-        setupExportDataBtn();
-        setupSyncDataBtn();
 
-        // Initialiser les champs de date
-        initDateFields();
-
-        // Afficher la vue de connexion
+        // Masquer le chargement et afficher la vue de connexion
+        loadingEl.classList.add('hidden');
         showView('login-view');
-
-        // Configurer la synchronisation périodique (toutes les 5 minutes)
-        setInterval(() => syncWithCloud(), 300000);
-
-        // Écouter les changements de statut de connexion
-        window.addEventListener('online', () => syncWithCloud());
-        window.addEventListener('offline', () => updateSyncStatus('offline', 'Pas de connexion'));
-
-        hideLoading();
-        console.log("Application initialisée avec succès");
+        
+        console.log("Initialisation terminée avec succès");
       } catch (error) {
         console.error("Erreur lors de l'initialisation:", error);
-        hideLoading();
-        updateSyncStatus('offline', 'Erreur d’initialisation');
-        showNotification("Erreur lors de l'initialisation. Mode dégradé activé.", "error");
-
-        // Configurer en mode dégradé
-        setupLoginForm();
-        setupLeaveForm();
-        setupLeaveRequestForm();
-        setupAdvanceRequestForm();
-        setupExcelImport();
-        setupLeaveBalanceImport();
-        setupAddUserBtn();
-        setupResetDataBtn();
-        setupExportDataBtn();
-        initDateFields();
-        showView('login-view');
+        document.body.innerHTML = `
+          <div class="text-center p-4 text-red-600">
+            <h1>Erreur de chargement</h1>
+            <p>Veuillez vérifier la console pour plus de détails.</p>
+            <p>${error.message}</p>
+          </div>
+        `;
       }
     }
 
-    // Démarrage de l'application
-    document.addEventListener('DOMContentLoaded', initApp);
+    // Lancement de l'application
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log("DOM chargé, lancement de initApp");
+      initApp();
+    });
   </script>
 </body>
 </html>
