@@ -29,6 +29,7 @@
         }
       }
     }
+
     if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
       document.documentElement.classList.add('dark');
     }
@@ -37,28 +38,430 @@
     });
   </script>
   <style>
-    /* Styles personnalisés si nécessaire */
-    .status-badge { padding: 0.25rem 0.5rem; border-radius: 9999px; font-size: 0.875rem; }
-    .status-pending { background-color: #fefcbf; color: #975a16; }
-    .status-approved { background-color: #c6f6d5; color: #276749; }
-    .status-rejected { background-color: #fed7d7; color: #9b2c2c; }
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+    body { font-family: 'Roboto', sans-serif; }
+    .notification { animation: fadeIn 0.5s, fadeOut 0.5s 2.5s forwards; pointer-events: none; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadeOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-20px); } }
+    .view-transition { animation: fadeInView 0.3s ease-out; }
+    @keyframes fadeInView { from { opacity: 0; } to { opacity: 1; } }
+    .custom-table { border-collapse: separate; border-spacing: 0; }
+    .custom-table th, .custom-table td { border-bottom-width: 1px; }
+    .status-badge { display: inline-flex; align-items: center; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; }
+    .status-pending { background-color: rgba(234, 179, 8, 0.1); color: rgb(234, 179, 8); border: 1px solid rgba(234, 179, 8, 0.2); }
+    .status-approved { background-color: rgba(34, 197, 94, 0.1); color: rgb(34, 197, 94); border: 1px solid rgba(34, 197, 94, 0.2); }
+    .status-rejected { background-color: rgba(239, 68, 68, 0.1); color: rgb(239, 68, 68); border: 1px solid rgba(239, 68, 68, 0.2); }
+    .dark .status-pending { background-color: rgba(234, 179, 8, 0.2); }
+    .dark .status-approved { background-color: rgba(34, 197, 94, 0.2); }
+    .dark .status-rejected { background-color: rgba(239, 68, 68, 0.2); }
+    .file-input-label { display: inline-flex; align-items: center; padding: 0.5rem 1rem; border: 1px solid #d1d5db; border-radius: 0.375rem; cursor: pointer; background-color: #ffffff; transition: all 0.2s; }
+    .file-input-label:hover { background-color: #f3f4f6; }
+    .dark .file-input-label { background-color: #374151; border-color: #4b5563; }
+    .dark .file-input-label:hover { background-color: #4b5563; }
+    .confirm-btn-shake { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+    @keyframes shake {
+      10%, 90% { transform: translate3d(-1px, 0, 0); }
+      20%, 80% { transform: translate3d(2px, 0, 0); }
+      30%, 50%, 70% { transform: translate3d(-3px, 0, 0); }
+      40%, 60% { transform: translate3d(3px, 0, 0); }
+    }
+    .sync-badge {
+      position: fixed;
+      bottom: 1rem;
+      right: 1rem;
+      padding: 0.5rem 1rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+    .sync-badge.online { background-color: rgba(34, 197, 94, 0.2); color: rgb(34, 197, 94); border: 1px solid rgba(34, 197, 94, 0.3); }
+    .sync-badge.offline { background-color: rgba(239, 68, 68, 0.2); color: rgb(239, 68, 68); border: 1px solid rgba(239, 68, 68, 0.3); }
+    .sync-badge.syncing { background-color: rgba(234, 179, 8, 0.2); color: rgb(234, 179, 8); border: 1px solid rgba(234, 179, 8, 0.3); }
     .spin { animation: spin 1s linear infinite; }
-    @keyframes spin { 100% { transform: rotate(360deg); } }
-    .sync-badge { padding: 0.25rem; border-radius: 9999px; }
-    .sync-badge.online { background-color: #c6f6d5; color: #276749; }
-    .sync-badge.offline { background-color: #fed7d7; color: #9b2c2c; }
-    .sync-badge.syncing { background-color: #fefcbf; color: #975a16; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .loading-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.5);
+      z-index: 100;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .loading-box {
+      background-color: white;
+      padding: 2rem;
+      border-radius: 0.5rem;
+      text-align: center;
+      max-width: 80%;
+    }
+    .dark .loading-box { background-color: #1F2937; color: white; }
   </style>
 </head>
 <body class="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
-  <!-- Structure HTML existante (non modifiée ici pour brièveté) -->
-  <div id="loading-overlay" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
-    <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg">
-      <p id="loading-message" class="text-lg font-medium text-gray-900 dark:text-white">Chargement...</p>
-      <p id="loading-details" class="text-sm text-gray-600 dark:text-gray-300 mt-2">Veuillez patienter...</p>
+  <div id="notification-container" class="fixed top-4 right-4 z-50 pointer-events-none"></div>
+  
+  <div id="loading-overlay" class="loading-container hidden">
+    <div class="loading-box shadow-lg">
+      <div class="text-center mb-4">
+        <i class="fas fa-sync-alt spin text-primary-500 text-3xl mb-4"></i>
+        <h3 class="text-lg font-medium" id="loading-message">Chargement des données...</h3>
+      </div>
+      <p class="text-sm text-gray-500 dark:text-gray-400" id="loading-details">Veuillez patienter pendant la synchronisation avec le serveur.</p>
     </div>
   </div>
-  <div id="notification-container" class="fixed bottom-4 right-4 z-50"></div>
+
+  <div id="sync-status" class="sync-badge offline">
+    <i class="fas fa-cloud-upload-alt"></i>
+    <span id="sync-text">Synchronisation...</span>
+  </div>
+
+  <header class="bg-white dark:bg-gray-800 shadow">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+      <div class="flex items-center">
+        <div class="flex-shrink-0">
+          <div class="h-10 w-10 rounded-full bg-primary-500 flex items-center justify-center text-white font-bold text-lg">AS</div>
+        </div>
+        <h1 class="ml-3 text-xl font-bold text-gray-900 dark:text-white">Autorisations de Sortie, Avances sur Salaire & Congés</h1>
+      </div>
+      <div id="user-info" class="flex items-center">
+        <div class="mr-3 text-sm text-right">
+          <p class="font-medium user-name">Non connecté</p>
+          <p class="text-gray-500 dark:text-gray-400 user-role"></p>
+        </div>
+        <button id="logout-button" class="hidden text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+          <i class="fas fa-sign-out-alt"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div id="login-view" class="view-transition">
+      <div class="max-w-md mx-auto bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
+        <div class="p-6">
+          <h2 class="text-2xl font-bold text-center mb-6">Connexion</h2>
+          <div class="space-y-4">
+            <div>
+              <label for="email" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
+              <input type="email" id="email" class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white" placeholder="Entrez votre email">
+            </div>
+            <div>
+              <label for="password" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Mot de passe</label>
+              <input type="password" id="password" class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white" placeholder="••••••••">
+            </div>
+            <div class="flex items-center justify-between">
+              <div class="flex items-center">
+                <input id="remember-me" type="checkbox" class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded">
+                <label for="remember-me" class="ml-2 block text-sm text-gray-700 dark:text-gray-300">Se souvenir de moi</label>
+              </div>
+              <div class="text-sm">
+                <a href="#" class="font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400">Mot de passe oublié ?</a>
+              </div>
+            </div>
+            <div>
+              <button id="btn-login-email" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                <i class="fas fa-sign-in-alt mr-2"></i> Se connecter
+              </button>
+            </div>
+            <div class="relative">
+              <div class="absolute inset-0 flex items-center">
+                <div class="w-full border-t border-gray-300 dark:border-gray-600"></div>
+              </div>
+              <div class="relative flex justify-center text-sm">
+                <span class="px-2 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400">Ou continuer avec</span>
+              </div>
+            </div>
+            <div>
+              <button id="btn-login-google" class="w-full flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                <i class="fab fa-google mr-2"></i> Google
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="employee-view" class="view-transition hidden space-y-8">
+      <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+        <div class="p-6">
+          <h2 class="text-lg font-semibold mb-6">Solde des congés</h2>
+          <div id="leave-balance" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="p-4 bg-gray-100 dark:bg-gray-700 rounded-lg">
+              <p class="text-sm font-medium text-gray-700 dark:text-gray-300">Congé Annuel</p>
+              <p id="annual-leave-balance" class="text-lg font-bold text-gray-900 dark:text-gray-100">0 jours</p>
+            </div>
+            <div class="p-4 bg-gray-100 dark:bg-gray-700 rounded-lg">
+              <p class="text-sm font-medium text-gray-700 dark:text-gray-300">Congé Exceptionnel</p>
+              <p id="exceptional-leave-balance" class="text-lg font-bold text-gray-900 dark:text-gray-100">0 jours</p>
+            </div>
+            <div class="p-4 bg-gray-100 dark:bg-gray-700 rounded-lg">
+              <p class="text-sm font-medium text-gray-700 dark:text-gray-300">Congé Récupération</p>
+              <p id="recovery-leave-balance" class="text-lg font-bold text-gray-900 dark:text-gray-100">0 jours</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+        <div class="p-6">
+          <h2 class="text-lg font-semibold mb-6">Nouvelle demande de congé</h2>
+          <form id="leave-form" class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label for="leave-type" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Type de congé</label>
+                <select id="leave-type" name="leave-type" required class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white">
+                  <option value="" disabled selected>Sélectionnez un type</option>
+                  <option value="Annuel">Annuel</option>
+                  <option value="Exceptionnel">Exceptionnel</option>
+                  <option value="Récupération">Récupération</option>
+                </select>
+              </div>
+              <div>
+                <label for="leave-start-date" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Date de sortie</label>
+                <input type="date" id="leave-start-date" name="leave-start-date" required class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white">
+              </div>
+              <div>
+                <label for="leave-end-date" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Date d'entrée</label>
+                <input type="date" id="leave-end-date" name="leave-end-date" required class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white">
+              </div>
+              <div>
+                <label for="leave-days" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Nombre de jours</label>
+                <input type="number" id="leave-days" name="leave-days" readonly class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-gray-100 dark:bg-gray-600 dark:text-white">
+              </div>
+            </div>
+            <div class="flex justify-end">
+              <button type="submit" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                <i class="fas fa-paper-plane mr-2"></i> Soumettre la demande
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+        <div class="p-6">
+          <h2 class="text-lg font-semibold mb-6">Nouvelle demande d'autorisation de sortie</h2>
+          <form id="leave-request-form" class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label for="leave-date" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Date</label>
+                <input type="date" id="leave-date" name="leave-date" required class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white">
+              </div>
+              <div>
+                <label for="leave-reason" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Motif</label>
+                <select id="leave-reason" name="leave-reason" required class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white">
+                  <option value="" disabled selected>Sélectionnez un motif</option>
+                  <option value="Rendez-vous médical">Rendez-vous médical</option>
+                  <option value="Urgence familiale">Urgence familiale</option>
+                  <option value="Course professionnelle">Course professionnelle</option>
+                  <option value="Autre">Autre</option>
+                </select>
+              </div>
+              <div>
+                <label for="leave-start-time" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Heure de sortie</label>
+                <input type="time" id="leave-start-time" name="leave-start-time" required class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white">
+              </div>
+              <div>
+                <label for="leave-end-time" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Heure de retour estimée</label>
+                <input type="time" id="leave-end-time" name="leave-end-time" required class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white">
+              </div>
+            </div>
+            <div id="other-reason-container" class="hidden">
+              <label for="other-reason" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Précisez le motif</label>
+              <textarea id="other-reason" name="other-reason" rows="3" class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white" placeholder="Détaillez votre motif..."></textarea>
+            </div>
+            <div class="flex justify-end">
+              <button type="submit" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                <i class="fas fa-paper-plane mr-2"></i> Soumettre la demande
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+        <div class="p-6">
+          <h2 class="text-lg font-semibold mb-6">Nouvelle demande d'avance sur salaire</h2>
+          <form id="advance-request-form" class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label for="advance-date" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Date de la demande</label>
+                <input type="date" id="advance-date" name="advance-date" required class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white">
+              </div>
+              <div>
+                <label for="advance-amount" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Montant demandé</label>
+                <input type="number" id="advance-amount" name="advance-amount" min="0" step="0.01" required class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white" placeholder="Entrez le montant">
+              </div>
+            </div>
+            <div class="flex justify-end">
+              <button type="submit" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                <i class="fas fa-paper-plane mr-2"></i> Soumettre la demande
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+        <div class="p-6">
+          <h2 class="text-lg font-semibold mb-6">Historique des demandes</h2>
+          <div class="overflow-x-auto">
+            <table id="employee-requests-table" class="min-w-full custom-table">
+              <thead class="bg-gray-50 dark:bg-gray-700">
+                <tr>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Type</th>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Date</th>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Détails</th>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Statut</th>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Commentaire</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-200 dark:divide-gray-600 bg-white dark:bg-gray-800"></tbody>
+            </table>
+            <div id="employee-no-requests" class="py-6 text-center text-gray-500 dark:text-gray-400">
+              <p>Aucune demande pour le moment.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="manager-view" class="view-transition hidden space-y-8">
+      <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+        <div class="p-6">
+          <h2 class="text-lg font-semibold mb-6">Demandes en attente</h2>
+          <div class="overflow-x-auto">
+            <table id="pending-requests-table" class="min-w-full custom-table">
+              <thead class="bg-gray-50 dark:bg-gray-700">
+                <tr>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Employé</th>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Type</th>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Date</th>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Détails</th>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-200 dark:divide-gray-600 bg-white dark:bg-gray-800"></tbody>
+            </table>
+            <div id="manager-no-pending" class="py-6 text-center text-gray-500 dark:text-gray-400">
+              <p>Aucune demande en attente pour le moment.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+        <div class="p-6">
+          <h2 class="text-lg font-semibold mb-6">Historique des demandes traitées</h2>
+          <div class="overflow-x-auto">
+            <table id="processed-requests-table" class="min-w-full custom-table">
+              <thead class="bg-gray-50 dark:bg-gray-700">
+                <tr>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Employé</th>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Type</th>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Date</th>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Détails</th>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Statut</th>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Commentaire</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-200 dark:divide-gray-600 bg-white dark:bg-gray-800"></tbody>
+            </table>
+            <div id="manager-no-processed" class="py-6 text-center text-gray-500 dark:text-gray-400">
+              <p>Aucune demande traitée pour le moment.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+        <div class="p-6">
+          <h2 class="text-lg font-semibold mb-6">Gestion des utilisateurs</h2>
+          <div class="space-y-4">
+            <div class="flex items-center space-x-4">
+              <button id="add-user-btn" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                <i class="fas fa-user-plus mr-2"></i> Ajouter un utilisateur
+              </button>
+            </div>
+            <div class="overflow-x-auto">
+              <table id="users-table" class="min-w-full custom-table">
+                <thead class="bg-gray-50 dark:bg-gray-700">
+                  <tr>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">ID</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Nom</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Email</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Rôle</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200 dark:divide-gray-600 bg-white dark:bg-gray-800"></tbody>
+              </table>
+            </div>
+            <div class="flex items-center space-x-4">
+              <input type="file" id="excel-upload" accept=".xlsx, .xls" class="hidden">
+              <label for="excel-upload" class="file-input-label text-sm font-medium text-gray-700 dark:text-gray-300">
+                <i class="fas fa-file-excel mr-2"></i> Sélectionner un fichier Excel (Utilisateurs)
+              </label>
+              <button id="import-excel-btn" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                <i class="fas fa-upload mr-2"></i> Importer Utilisateurs
+              </button>
+            </div>
+            <p class="text-sm text-gray-500 dark:text-gray-400">Importez un fichier Excel contenant les utilisateurs (colonnes : id, name, email, role, password).</p>
+            <div class="flex items-center space-x-4">
+              <input type="file" id="leave-balance-upload" accept=".xlsx, .xls" class="hidden">
+              <label for="leave-balance-upload" class="file-input-label text-sm font-medium text-gray-700 dark:text-gray-300">
+                <i class="fas fa-file-excel mr-2"></i> Sélectionner un fichier Excel (Soldes des congés)
+              </label>
+              <button id="import-leave-balance-btn" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                <i class="fas fa-upload mr-2"></i> Importer Soldes
+              </button>
+            </div>
+            <p class="text-sm text-gray-500 dark:text-gray-400">Importez un fichier Excel contenant les soldes des congés (colonnes : id, name, email, annual_leave, exceptional_leave, recovery_leave).</p>
+          </div>
+        </div>
+      </div>
+      <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+        <div class="p-6">
+          <h2 class="text-lg font-semibold mb-6">Exportation des données</h2>
+          <button id="export-data-btn" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+            <i class="fas fa-download mr-2"></i> Exporter les données
+          </button>
+          <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Cliquez sur "Exporter" pour télécharger un fichier Excel avec les utilisateurs, soldes et demandes.</p>
+        </div>
+      </div>
+      <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+        <div class="p-6">
+          <h2 class="text-lg font-semibold mb-6">Synchronisation des données</h2>
+          <div class="flex flex-col md:flex-row gap-4">
+            <button id="sync-data-btn" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+              <i class="fas fa-sync-alt mr-2
+
+"></i> Synchroniser maintenant
+            </button>
+            <button id="reset-data-btn" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+              <i class="fas fa-trash-alt mr-2"></i> Réinitialiser les données
+            </button>
+          </div>
+          <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+            Synchronisez les données pour les enregistrer dans le cloud et permettre l'accès depuis d'autres appareils.
+            <br>Cliquez sur "Réinitialiser" pour effacer toutes les données et revenir aux valeurs par défaut.
+          </p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div id="modal-container" class="fixed inset-0 z-10 overflow-y-auto hidden">
+    <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+      <div class="fixed inset-0 transition-opacity" aria-hidden="true">
+        <div class="absolute inset-0 bg-gray-500 dark:bg-gray-900 opacity-75"></div>
+      </div>
+      <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true"></span>
+      <div id="modal-content" class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full"></div>
+    </div>
+  </div>
 
   <script>
     // Structure des données de l'application
@@ -72,7 +475,7 @@
 
     // URL de l'API Google Sheets
     const API_URL = "https://script.google.com/macros/s/AKfycbx1da0SsSP_7hGxL2AQIbn1_DezdE_tHYU9ac_XbnZB8h4yzoiJo94uS12ptifcEzTeLg/exec";
-    const API_KEY = "monsecret123"; // Remplacez par votre clé définie dans Apps Script
+    const API_KEY = "votre_clé_secrète"; // Remplacez par votre clé définie dans Apps Script
 
     // Afficher l'overlay de chargement
     function showLoading(message, details) {
@@ -87,10 +490,10 @@
       document.getElementById('loading-overlay').classList.add('hidden');
     }
 
-    // Mettre à jour le statut de synchronisation
+    // Mettre à jour le badge de statut de synchronisation
     function updateSyncStatus(status, message) {
-      const badge = document.createElement('span'); // Remplacez par un élément existant si nécessaire
-      const text = document.createElement('span');
+      const badge = document.getElementById('sync-status');
+      const text = document.getElementById('sync-text');
       badge.className = "sync-badge";
       switch(status) {
         case 'online':
@@ -109,7 +512,6 @@
           text.textContent = message || "Synchronisation...";
           break;
       }
-      // Ajoutez badge et text au DOM si nécessaire
     }
 
     // Hacher les mots de passe
@@ -120,7 +522,7 @@
       return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
-    // Sauvegarder les données localement
+    // Sauvegarder les données dans localStorage
     function saveToLocalStorage() {
       try {
         localStorage.setItem('users', JSON.stringify(appData.users));
@@ -144,6 +546,7 @@
         if (leaveBalances) appData.leaveBalances = JSON.parse(leaveBalances);
         const lastSync = localStorage.getItem('lastSync');
         if (lastSync) appData.lastSync = lastSync;
+        if (appData.users.length === 0) await createDefaultData();
         return true;
       } catch (error) {
         console.error("Erreur lors du chargement local:", error);
@@ -151,7 +554,7 @@
       }
     }
 
-    // Créer des données par défaut
+    // Créer les données par défaut
     async function createDefaultData() {
       const defaultUsers = [
         { id: 76, name: "ALILI HOUSSEM", email: "ALILIHOUSSEM@EASYWAYELECTO.COM", role: "Responsable", password: "1234" },
@@ -164,9 +567,7 @@
       appData.requests = [];
       appData.leaveBalances = {};
       for (const user of appData.users) {
-        if (user.role === "Employé") {
-          initializeLeaveBalances(user.id);
-        }
+        if (user.role === "Employé") initializeLeaveBalances(user.id);
       }
       saveToLocalStorage();
     }
@@ -191,7 +592,7 @@
       }
     }
 
-    // Ajouter des données à Google Sheets
+    // Ajouter une entrée dans Google Sheets
     async function addToSheet(sheetName, data) {
       try {
         updateSyncStatus('syncing', "Ajout en cours...");
@@ -209,7 +610,7 @@
       }
     }
 
-    // Charger les données depuis Google Sheets au démarrage
+    // Charger les données depuis Google Sheets
     async function loadFromCloud() {
       const usersData = await fetchFromSheet("Utilisateurs");
       if (usersData) {
@@ -253,13 +654,58 @@
     // Initialiser les soldes de congés
     function initializeLeaveBalances(userId) {
       if (!appData.leaveBalances[userId]) {
-        appData.leaveBalances[userId] = {
-          annual: 20,
-          exceptional: 5,
-          recovery: 10
-        };
+        appData.leaveBalances[userId] = { annual: 20, exceptional: 5, recovery: 10 };
         saveToLocalStorage();
       }
+    }
+
+    // Mettre à jour l'affichage des soldes de congés
+    function updateLeaveBalanceDisplay() {
+      if (!appData.currentUser || appData.currentUser.role !== "Employé") return;
+      const userId = appData.currentUser.id;
+      initializeLeaveBalances(userId);
+      document.getElementById('annual-leave-balance').textContent = `${appData.leaveBalances[userId].annual} jours`;
+      document.getElementById('exceptional-leave-balance').textContent = `${appData.leaveBalances[userId].exceptional} jours`;
+      document.getElementById('recovery-leave-balance').textContent = `${appData.leaveBalances[userId].recovery} jours`;
+    }
+
+    // Calculer le nombre de jours entre deux dates
+    function calculateDaysBetweenDates(startDate, endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const diffTime = Math.abs(end - start);
+      return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    }
+
+    // Formater une date
+    function formatDate(dateStr) {
+      const options = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
+      return new Date(dateStr).toLocaleDateString('fr-FR', options);
+    }
+
+    // Obtenir la classe CSS pour un statut
+    function getStatusClass(status) {
+      switch(status) {
+        case "En attente": return "status-pending";
+        case "Approuvée": return "status-approved";
+        case "Refusée": return "status-rejected";
+        default: return "";
+      }
+    }
+
+    // Obtenir l'icône pour un statut
+    function getStatusIcon(status) {
+      switch(status) {
+        case "En attente": return '<i class="fas fa-clock mr-1"></i>';
+        case "Approuvée": return '<i class="fas fa-check mr-1"></i>';
+        case "Refusée": return '<i class="fas fa-times mr-1"></i>';
+        default: return "";
+      }
+    }
+
+    // Rechercher un utilisateur par ID
+    function getUserById(id) {
+      return appData.users.find(user => user.id === id) || { name: "Employé inconnu" };
     }
 
     // Afficher une notification
@@ -279,25 +725,546 @@
       setTimeout(() => notificationEl.remove(), 3000);
     }
 
-    // Initialisation de l'application
-    async function initApp() {
-      try {
-        showLoading("Initialisation", "Chargement des données...");
-        await loadFromLocalStorage();
-        if (!appData.users.length) await createDefaultData();
-        await loadFromCloud();
-        hideLoading();
-        showNotification("Application initialisée avec succès.", "success");
-        setInterval(() => appData.currentUser && syncToCloud(), 300000); // Synchro toutes les 5 min
-      } catch (error) {
-        console.error("Erreur lors de l'initialisation:", error);
-        hideLoading();
-        showNotification("Erreur lors de l'initialisation.", "error");
+    // Afficher une vue
+    function showView(viewId) {
+      document.querySelectorAll('main > div[id$="-view"]').forEach(view => view.classList.add('hidden'));
+      const viewToShow = document.getElementById(viewId);
+      if (viewToShow) {
+        viewToShow.classList.remove('hidden');
+        viewToShow.classList.add('view-transition');
+        if (viewId === 'employee-view') {
+          updateEmployeeRequestsTable();
+          updateLeaveBalanceDisplay();
+        } else if (viewId === 'manager-view') {
+          updateManagerRequestsTables();
+          updateUsersTable();
+        }
       }
     }
 
-    // Démarrer l'application
-    document.addEventListener('DOMContentLoaded', initApp);
-  </script>
-</body>
-</html>
+    // Afficher une modal
+    function showModal(title, content, actions) {
+      const modalContainer = document.getElementById('modal-container');
+      const modalContent = document.getElementById('modal-content');
+      modalContent.innerHTML = `
+        <div class="p-6">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white">${title}</h3>
+          <div class="mt-4">${content}</div>
+          <div class="mt-6 flex flex-row-reverse gap-2">${actions}</div>
+        </div>
+      `;
+      modalContainer.classList.remove('hidden');
+      modalContent.querySelectorAll('.modal-close').forEach(button => {
+        button.addEventListener('click', closeModal);
+      });
+    }
+
+    // Fermer une modal
+    function closeModal() {
+      document.getElementById('modal-container').classList.add('hidden');
+    }
+
+    // Configurer le formulaire de congé
+    function setupLeaveForm() {
+      const form = document.getElementById('leave-form');
+      const startDateInput = document.getElementById('leave-start-date');
+      const endDateInput = document.getElementById('leave-end-date');
+      const daysInput = document.getElementById('leave-days');
+      const leaveTypeSelect = document.getElementById('leave-type');
+
+      function updateDays() {
+        const startDate = startDateInput.value;
+        const endDate = endDateInput.value;
+        if (startDate && endDate) {
+          daysInput.value = calculateDaysBetweenDates(startDate, endDate);
+        } else {
+          daysInput.value = '';
+        }
+      }
+
+      startDateInput.addEventListener('change', updateDays);
+      endDateInput.addEventListener('change', updateDays);
+
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const leaveType = leaveTypeSelect.value;
+        const startDate = startDateInput.value;
+        const endDate = endDateInput.value;
+        const days = parseInt(daysInput.value);
+        const today = new Date().toISOString().split('T')[0];
+
+        if (startDate < today) return showNotification("La date de sortie ne peut pas être dans le passé.", "error");
+        if (endDate < startDate) return showNotification("La date d'entrée doit être postérieure à la date de sortie.", "error");
+        if (!leaveType) return showNotification("Veuillez sélectionner un type de congé.", "error");
+
+        const userId = appData.currentUser.id;
+        initializeLeaveBalances(userId);
+        const leaveBalance = appData.leaveBalances[userId];
+        const balanceKey = leaveType.toLowerCase();
+        if (days > leaveBalance[balanceKey]) {
+          return showNotification(`Vous n'avez pas assez de jours disponibles (${leaveBalance[balanceKey]} jours restants).`, "error");
+        }
+
+        const newRequest = {
+          id: Date.now(),
+          type: `Congé ${leaveType}`,
+          date: startDate,
+          details: `Du ${formatDate(startDate)} au ${formatDate(endDate)} (${days} jours)`,
+          status: "En attente",
+          employeeId: userId,
+          managerId: 76,
+          createdAt: new Date().toISOString(),
+          comment: "",
+          leaveType: leaveType,
+          days: days,
+          synced: false
+        };
+
+        appData.requests.push(newRequest);
+        saveToLocalStorage();
+        syncToCloud();
+        form.reset();
+        daysInput.value = '';
+        updateEmployeeRequestsTable();
+        showNotification("Demande de congé soumise avec succès.", "success");
+      });
+    }
+
+    // Configurer le formulaire de demande d'autorisation de sortie
+    function setupLeaveRequestForm() {
+      const form = document.getElementById('leave-request-form');
+      const reasonSelect = document.getElementById('leave-reason');
+      const otherReasonContainer = document.getElementById('other-reason-container');
+
+      reasonSelect.addEventListener('change', function() {
+        const isOther = this.value === 'Autre';
+        otherReasonContainer.classList.toggle('hidden', !isOther);
+        document.getElementById('other-reason').toggleAttribute('required', isOther);
+      });
+
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const date = document.getElementById('leave-date').value;
+        const startTime = document.getElementById('leave-start-time').value;
+        const endTime = document.getElementById('leave-end-time').value;
+        let reason = reasonSelect.value;
+        const today = new Date().toISOString().split('T')[0];
+
+        if (date < today) return showNotification("La date ne peut pas être dans le passé.", "error");
+        if (startTime >= endTime) return showNotification("L'heure de retour doit être postérieure à l'heure de sortie.", "error");
+        if (!reason) return showNotification("Veuillez sélectionner un motif.", "error");
+
+        if (reason === 'Autre') {
+          const otherReason = document.getElementById('other-reason').value.trim();
+          if (!otherReason) return showNotification("Veuillez préciser le motif.", "error");
+          reason = otherReason;
+        }
+
+        const newRequest = {
+          id: Date.now(),
+          type: "Autorisation de sortie",
+          date,
+          details: `De ${startTime} à ${endTime} - ${reason}`,
+          status: "En attente",
+          employeeId: appData.currentUser.id,
+          managerId: 76,
+          createdAt: new Date().toISOString(),
+          comment: "",
+          synced: false
+        };
+
+        appData.requests.push(newRequest);
+        saveToLocalStorage();
+        syncToCloud();
+        form.reset();
+        otherReasonContainer.classList.add('hidden');
+        updateEmployeeRequestsTable();
+        showNotification("Demande soumise avec succès.", "success");
+      });
+    }
+
+    // Configurer le formulaire de demande d'avance sur salaire
+    function setupAdvanceRequestForm() {
+      const form = document.getElementById('advance-request-form');
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const date = document.getElementById('advance-date').value;
+        const amount = document.getElementById('advance-amount').value;
+        const today = new Date().toISOString().split('T')[0];
+
+        if (date < today) return showNotification("La date ne peut pas être dans le passé.", "error");
+        if (amount <= 0) return showNotification("Le montant doit être supérieur à 0.", "error");
+
+        const newRequest = {
+          id: Date.now(),
+          type: "Avance sur salaire",
+          date,
+          details: `Montant : ${amount} €`,
+          status: "En attente",
+          employeeId: appData.currentUser.id,
+          managerId: 76,
+          createdAt: new Date().toISOString(),
+          comment: "",
+          synced: false
+        };
+
+        appData.requests.push(newRequest);
+        saveToLocalStorage();
+        syncToCloud();
+        form.reset();
+        updateEmployeeRequestsTable();
+        showNotification("Demande d'avance soumise avec succès.", "success");
+      });
+    }
+
+    // Mettre à jour le tableau des demandes de l'employé
+    function updateEmployeeRequestsTable() {
+      if (!appData.currentUser || appData.currentUser.role !== "Employé") return;
+      const tableBody = document.querySelector('#employee-requests-table tbody');
+      const noRequestsMessage = document.getElementById('employee-no-requests');
+      const employeeRequests = appData.requests.filter(req => req.employeeId === appData.currentUser.id)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+      if (employeeRequests.length === 0) {
+        tableBody.innerHTML = '';
+        noRequestsMessage.style.display = 'block';
+        return;
+      }
+
+      noRequestsMessage.style.display = 'none';
+      tableBody.innerHTML = employeeRequests.map(req => `
+        <tr>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${req.type}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${formatDate(req.date)}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${req.details}</td>
+          <td class="px-6 py-4 whitespace-nowrap">
+            <span class="status-badge ${getStatusClass(req.status)}">${getStatusIcon(req.status)} ${req.status}</span>
+          </td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">${req.comment}</td>
+        </tr>
+      `).join('');
+    }
+
+    // Mettre à jour les tableaux des demandes pour le responsable
+    function updateManagerRequestsTables() {
+      if (!appData.currentUser || appData.currentUser.role !== "Responsable") return;
+      const pendingTableBody = document.querySelector('#pending-requests-table tbody');
+      const noPendingMessage = document.getElementById('manager-no-pending');
+      const pendingRequests = appData.requests.filter(req => req.status === "En attente")
+        .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+      if (pendingRequests.length === 0) {
+        pendingTableBody.innerHTML = '';
+        noPendingMessage.style.display = 'block';
+      } else {
+        noPendingMessage.style.display = 'none';
+        pendingTableBody.innerHTML = pendingRequests.map(req => {
+          const employee = getUserById(req.employeeId);
+          return `
+            <tr>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${employee.name}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${req.type}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${formatDate(req.date)}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${req.details}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm">
+                <div class="flex space-x-2">
+                  <button data-request-id="${req.id}" class="approve-btn px-3 py-1 bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100 rounded-md hover:bg-green-200 dark:hover:bg-green-700">
+                    <i class="fas fa-check mr-1"></i> Approuver
+                  </button>
+                  <button data-request-id="${req.id}" class="reject-btn px-3 py-1 bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-100 rounded-md hover:bg-red-200 dark:hover:bg-red-700">
+                    <i class="fas fa-times mr-1"></i> Refuser
+                  </button>
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join('');
+
+        pendingTableBody.querySelectorAll('.approve-btn').forEach(button => {
+          button.addEventListener('click', function() {
+            approveRequest(parseInt(this.getAttribute('data-request-id')));
+          });
+        });
+
+        pendingTableBody.querySelectorAll('.reject-btn').forEach(button => {
+          button.addEventListener('click', function() {
+            showRejectModal(parseInt(this.getAttribute('data-request-id')));
+          });
+        });
+      }
+
+      const processedTableBody = document.querySelector('#processed-requests-table tbody');
+      const noProcessedMessage = document.getElementById('manager-no-processed');
+      const processedRequests = appData.requests.filter(req => req.status !== "En attente")
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+      if (processedRequests.length === 0) {
+        processedTableBody.innerHTML = '';
+        noProcessedMessage.style.display = 'block';
+      } else {
+        noProcessedMessage.style.display = 'none';
+        processedTableBody.innerHTML = processedRequests.map(req => {
+          const employee = getUserById(req.employeeId);
+          return `
+            <tr>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${employee.name}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${req.type}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${formatDate(req.date)}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${req.details}</td>
+              <td class="px-6 py-4 whitespace-nowrap">
+                <span class="status-badge ${getStatusClass(req.status)}">${getStatusIcon(req.status)} ${req.status}</span>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">${req.comment}</td>
+            </tr>
+          `;
+        }).join('');
+      }
+    }
+
+    // Mettre à jour le tableau des utilisateurs
+    function updateUsersTable() {
+      if (!appData.currentUser || appData.currentUser.role !== "Responsable") return;
+      const tableBody = document.querySelector('#users-table tbody');
+      tableBody.innerHTML = appData.users.map(user => `
+        <tr>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${user.id}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${user.name}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${user.email}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${user.role}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm">
+            <div class="flex space-x-2">
+              <button data-user-id="${user.id}" class="edit-user-btn px-3 py-1 bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100 rounded-md hover:bg-blue-200 dark:hover:bg-blue-700">
+                <i class="fas fa-edit mr-1"></i> Modifier
+              </button>
+              <button data-user-id="${user.id}" class="delete-user-btn px-3 py-1 bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-100 rounded-md hover:bg-red-200 dark:hover:bg-red-700">
+                <i class="fas fa-trash-alt mr-1"></i> Supprimer
+              </button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+
+      tableBody.querySelectorAll('.edit-user-btn').forEach(button => {
+        button.addEventListener('click', function() {
+          showEditUserModal(parseInt(this.getAttribute('data-user-id')));
+        });
+      });
+
+      tableBody.querySelectorAll('.delete-user-btn').forEach(button => {
+        button.addEventListener('click', function() {
+          showDeleteUserModal(parseInt(this.getAttribute('data-user-id')));
+        });
+      });
+    }
+
+    // Approuver une demande
+    function approveRequest(requestId) {
+      const request = appData.requests.find(req => req.id === requestId);
+      if (!request) return;
+
+      request.status = "Approuvée";
+      request.comment = "";
+      if (request.type.startsWith("Congé")) {
+        const userId = request.employeeId;
+        initializeLeaveBalances(userId);
+        appData.leaveBalances[userId][request.leaveType.toLowerCase()] -= request.days;
+        if (appData.currentUser && appData.currentUser.id === userId) updateLeaveBalanceDisplay();
+      }
+
+      saveToLocalStorage();
+      syncToCloud();
+      updateManagerRequestsTables();
+      updateEmployeeRequestsTable();
+      showNotification(`Demande de ${getUserById(request.employeeId).name} approuvée.`, "success");
+    }
+
+    // Afficher la modal de rejet
+    function showRejectModal(requestId) {
+      const request = appData.requests.find(req => req.id === requestId);
+      if (!request) return;
+      const employee = getUserById(request.employeeId);
+      const modalContent = `
+        <p class="text-gray-700 dark:text-gray-300">
+          Vous êtes sur le point de refuser la demande de ${employee.name} pour le ${formatDate(request.date)}.
+        </p>
+        <div class="mt-4">
+          <label for="reject-reason" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Motif du refus (optionnel)</label>
+          <textarea id="reject-reason" rows="3" class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white" placeholder="Expliquez pourquoi..."></textarea>
+        </div>
+      `;
+      const modalActions = `
+        <button id="confirm-reject" class="inline-flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+          Confirmer le refus
+        </button>
+        <button class="modal-close inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+          Annuler
+        </button>
+      `;
+      showModal(`Refuser la demande`, modalContent, modalActions);
+      document.getElementById('confirm-reject').addEventListener('click', function() {
+        rejectRequest(requestId, document.getElementById('reject-reason').value.trim());
+        closeModal();
+      });
+    }
+
+    // Rejeter une demande
+    function rejectRequest(requestId, comment = "") {
+      const request = appData.requests.find(req => req.id === requestId);
+      if (!request) return;
+      request.status = "Refusée";
+      request.comment = comment;
+      saveToLocalStorage();
+      syncToCloud();
+      updateManagerRequestsTables();
+      updateEmployeeRequestsTable();
+      showNotification(`Demande de ${getUserById(request.employeeId).name} refusée.`, "success");
+    }
+
+    // Configurer le formulaire de connexion
+    function setupLoginForm() {
+      document.getElementById('btn-login-email').addEventListener('click', async function(e) {
+        e.preventDefault();
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value;
+
+        if (!email) return showNotification("Veuillez entrer votre email.", "error");
+        if (!password) return showNotification("Veuillez entrer votre mot de passe.", "error");
+
+        const hashedPassword = await hashPassword(password);
+        const user = appData.users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === hashedPassword);
+        if (user) {
+          login(user);
+        } else {
+          showNotification("Email ou mot de passe incorrect.", "error");
+        }
+      });
+
+      document.getElementById('btn-login-google').addEventListener('click', function(e) {
+        e.preventDefault();
+        showNotification("Connexion Google non disponible dans cette démo.", "info");
+      });
+
+      document.getElementById('logout-button').addEventListener('click', logout);
+    }
+
+    // Connexion d'un utilisateur
+    function login(user) {
+      appData.currentUser = user;
+      initializeLeaveBalances(user.id);
+      document.querySelector('.user-name').textContent = user.name;
+      document.querySelector('.user-role').textContent = user.role;
+      document.getElementById('logout-button').classList.remove('hidden');
+      showView(user.role === "Employé" ? 'employee-view' : 'manager-view');
+      showNotification(`Bienvenue, ${user.name} !`, "success");
+      syncToCloud();
+    }
+
+    // Déconnexion
+    function logout() {
+      appData.currentUser = null;
+      document.querySelector('.user-name').textContent = "Non connecté";
+      document.querySelector('.user-role').textContent = "";
+      document.getElementById('logout-button').classList.add('hidden');
+      showView('login-view');
+      showNotification("Vous avez été déconnecté.", "info");
+    }
+
+    // Configurer l'importation Excel d'utilisateurs
+    function setupExcelImport() {
+      const importBtn = document.getElementById('import-excel-btn');
+      const fileInput = document.getElementById('excel-upload');
+
+      importBtn.addEventListener('click', async function() {
+        const file = fileInput.files[0];
+        if (!file) return showNotification("Veuillez sélectionner un fichier Excel.", "error");
+
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+
+          if (jsonData.length === 0) return showNotification("Le fichier Excel est vide.", "error");
+
+          const newUsers = await Promise.all(jsonData.map(async row => {
+            if (!row.id || !row.name || !row.email || !row.role || !row.password) return null;
+            if (!["Employé", "Responsable"].includes(row.role)) return null;
+            if (appData.users.some(u => u.id === parseInt(row.id))) return null;
+            return {
+              id: parseInt(row.id),
+              name: row.name.toString().trim(),
+              email: row.email.toString().trim(),
+              role: row.role.toString().trim(),
+              password: await hashPassword(row.password.toString().trim())
+            };
+          }));
+
+          const validUsers = newUsers.filter(user => user !== null);
+          if (validUsers.length === 0) return showNotification("Aucun utilisateur valide trouvé.", "error");
+
+          appData.users = [...appData.users, ...validUsers];
+          validUsers.forEach(user => {
+            if (user.role === "Employé") initializeLeaveBalances(user.id);
+          });
+          saveToLocalStorage();
+          syncToCloud();
+          fileInput.value = '';
+          updateUsersTable();
+          showNotification(`${validUsers.length} utilisateur(s) importé(s).`, "success");
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    // Configurer l'importation Excel des soldes de congés
+    function setupLeaveBalanceImport() {
+      const importBtn = document.getElementById('import-leave-balance-btn');
+      const fileInput = document.getElementById('leave-balance-upload');
+
+      importBtn.addEventListener('click', function() {
+        const file = fileInput.files[0];
+        if (!file) return showNotification("Veuillez sélectionner un fichier Excel.", "error");
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+
+          if (jsonData.length === 0) return showNotification("Le fichier Excel est vide.", "error");
+
+          let updatedCount = 0;
+          jsonData.forEach(row => {
+            if (!row.id || !row.email || row.annual_leave === undefined || row.exceptional_leave === undefined || row.recovery_leave === undefined) return;
+            const userId = parseInt(row.id);
+            const user = appData.users.find(u => u.id === userId && u.email.toLowerCase() === row.email.toString().trim().toLowerCase());
+            if (!user || user.role !== "Employé") return;
+            appData.leaveBalances[userId] = {
+              annual: parseInt(row.annual_leave) || 0,
+              exceptional: parseInt(row.exceptional_leave) || 0,
+              recovery: parseInt(row.recovery_leave) || 0
+            };
+            updatedCount++;
+          });
+
+          if (updatedCount === 0) return showNotification("Aucun solde mis à jour.", "error");
+
+          saveToLocalStorage();
+          syncToCloud();
+          fileInput.value = '';
+          updateLeaveBalanceDisplay();
+          showNotification(`${updatedCount} solde(s) mis à jour.`, "success");
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    // Configurer le bouton d'ajout d'utilisateur
+    function setupAddUserBtn() {
+      document.getElementById('add-user-btn').addEventListener('click', showAddUserModal);
+    }
+
+    // Afficher la modal d'ajout d'utilisateur
+    function showAddUserModal()
