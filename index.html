@@ -497,6 +497,7 @@
  // Configuration de Google Sheets
  const sheetsConfig = {
    apiUrl: "https://script.google.com/macros/s/AKfycbx1da0SsSP_7hGxL2AQIbn1_DezdE_tHYU9ac_XbnZB8h4yzoiJo94uS12ptifcEzTeLg/exec",
+   secretKey: "monsecret123", // Clé secrète pour l'authentification
    syncInterval: 300000, // 5 minutes en millisecondes
    syncing: false // Indique si une synchronisation est en cours
  };
@@ -634,7 +635,7 @@
    try {
      updateSyncStatus('syncing', `Récupération des données de ${sheet}...`);
      
-     const url = `${sheetsConfig.apiUrl}?action=get&sheet=${sheet}`;
+     const url = `${sheetsConfig.apiUrl}?action=get&sheet=${sheet}&key=${sheetsConfig.secretKey}`;
      const response = await fetch(url);
      
      if (!response.ok) {
@@ -658,6 +659,7 @@
      formData.append('action', 'append');
      formData.append('sheet', sheet);
      formData.append('data', JSON.stringify(data));
+     formData.append('key', sheetsConfig.secretKey);
      
      const response = await fetch(url, {
        method: 'POST',
@@ -771,6 +773,7 @@
      formData.append('action', 'update');
      formData.append('sheet', sheet);
      formData.append('data', JSON.stringify(data));
+     formData.append('key', sheetsConfig.secretKey);
      
      const response = await fetch(url, {
        method: 'POST',
