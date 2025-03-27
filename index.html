@@ -466,7 +466,7 @@
    </button>
  </div>
  <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-   Synchronisez les données pour les enregistrer dans Google Sheets et permettre l'accès depuis d'autres appareils.
+   Synchronisez les données pour les enregistrer sur le serveur et permettre l'accès depuis d'autres appareils.
    <br>Cliquez sur "Réinitialiser" pour effacer toutes les données et revenir aux valeurs par défaut.
  </p>
  </div>
@@ -494,12 +494,24 @@
    lastSync: null
  };
 
- // Configuration de Google Sheets
+ // Stockage local en mémoire (pour remplacer localStorage qui n'est pas disponible dans le sandbox)
+ const memoryStorage = {
+   data: {},
+   setItem: function(key, value) {
+     this.data[key] = value;
+   },
+   getItem: function(key) {
+     return this.data[key] || null;
+   }
+ };
+
+ // Configuration de l'API
  const sheetsConfig = {
    apiUrl: "https://script.google.com/macros/s/AKfycbx1da0SsSP_7hGxL2AQIbn1_DezdE_tHYU9ac_XbnZB8h4yzoiJo94uS12ptifcEzTeLg/exec",
-   secretKey: "monsecret123", // Clé secrète pour l'authentification
+   secretKey: "monsecret123",
    syncInterval: 300000, // 5 minutes en millisecondes
-   syncing: false // Indique si une synchronisation est en cours
+   syncing: false, // Indique si une synchronisation est en cours
+   usePoe: true // Utiliser Poe comme alternative si Google Sheets ne fonctionne pas
  };
 
  // Afficher l'overlay de chargement
@@ -553,44 +565,44 @@
    return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
  }
 
- // Sauvegarder les données dans localStorage pour le fonctionnement hors ligne
+ // Sauvegarder les données dans le stockage mémoire pour le fonctionnement hors ligne
  function saveToLocalStorage() {
    try {
-     localStorage.setItem('users', JSON.stringify(appData.users));
-     localStorage.setItem('requests', JSON.stringify(appData.requests));
-     localStorage.setItem('leaveBalances', JSON.stringify(appData.leaveBalances));
-     localStorage.setItem('lastSync', appData.lastSync);
-     console.log("Données sauvegardées en local avec succès");
+     memoryStorage.setItem('users', JSON.stringify(appData.users));
+     memoryStorage.setItem('requests', JSON.stringify(appData.requests));
+     memoryStorage.setItem('leaveBalances', JSON.stringify(appData.leaveBalances));
+     memoryStorage.setItem('lastSync', appData.lastSync);
+     console.log("Données sauvegardées en mémoire avec succès");
    } catch (error) {
-     console.error("Erreur lors de la sauvegarde locale:", error);
-     showNotification("Une erreur est survenue lors de la sauvegarde locale des données.", "error");
+     console.error("Erreur lors de la sauvegarde en mémoire:", error);
+     showNotification("Une erreur est survenue lors de la sauvegarde des données en mémoire.", "error");
    }
  }
 
- // Charger les données depuis localStorage
+ // Charger les données depuis le stockage mémoire
  async function loadFromLocalStorage() {
    try {
-     const users = localStorage.getItem('users');
+     const users = memoryStorage.getItem('users');
      if (users) {
        appData.users = JSON.parse(users);
      }
      
-     const requests = localStorage.getItem('requests');
+     const requests = memoryStorage.getItem('requests');
      if (requests) {
        appData.requests = JSON.parse(requests);
      }
      
-     const leaveBalances = localStorage.getItem('leaveBalances');
+     const leaveBalances = memoryStorage.getItem('leaveBalances');
      if (leaveBalances) {
        appData.leaveBalances = JSON.parse(leaveBalances);
      }
      
-     const lastSync = localStorage.getItem('lastSync');
+     const lastSync = memoryStorage.getItem('lastSync');
      if (lastSync) {
        appData.lastSync = lastSync;
      }
      
-     console.log("Données chargées depuis localStorage avec succès");
+     console.log("Données chargées depuis la mémoire avec succès");
      
      // Si aucune donnée n'est disponible, créer les données par défaut
      if (appData.users.length === 0) {
@@ -600,7 +612,7 @@
      
      return true;
    } catch (error) {
-     console.error("Erreur lors du chargement depuis localStorage:", error);
+     console.error("Erreur lors du chargement depuis la mémoire:", error);
      return false;
    }
  }
@@ -630,56 +642,180 @@
    saveToLocalStorage();
  }
 
- // Fonction pour récupérer les données depuis Google Sheets
+ // Alternative: utiliser Poe pour stocker/récupérer des données
+ async function saveToPoe(data) {
+   try {
+     if (!window.Poe) {
+       console.error("API Poe non disponible");
+       return false;
+     }
+     
+     updateSyncStatus('syncing', "Enregistrement via Poe...");
+     
+     // Enregistrer un gestionnaire pour recevoir la réponse
+     window.Poe.registerHandler("poe-storage-handler", (result) => {
+       if (result.status === "error") {
+         console.error("Erreur lors de l'enregistrement via Poe:", result.statusText);
+         updateSyncStatus('offline', "Échec de l'enregistrement");
+         return false;
+       }
+       
+       if (result.status === "complete") {
+         updateSyncStatus('online', "Synchronisé (via Poe)");
+         return true;
+       }
+     });
+     
+     // Envoyer les données au bot
+     const prompt = `STORE_DATA ${JSON.stringify(data)}`;
+     await window.Poe.sendUserMessage(
+       `@Claude-3-Opus ${prompt}`,
+       {
+         handler: "poe-storage-handler",
+         stream: false,
+         openChat: false
+       }
+     );
+     
+     return true;
+   } catch (error) {
+     console.error("Erreur lors de l'enregistrement via Poe:", error);
+     updateSyncStatus('offline', "Échec de l'enregistrement");
+     return false;
+   }
+ }
+
+ async function loadFromPoe() {
+   try {
+     if (!window.Poe) {
+       console.error("API Poe non disponible");
+       return false;
+     }
+     
+     updateSyncStatus('syncing', "Récupération via Poe...");
+     
+     let dataReceived = false;
+     
+     // Enregistrer un gestionnaire pour recevoir la réponse
+     window.Poe.registerHandler("poe-fetch-handler", (result) => {
+       if (result.status === "error") {
+         console.error("Erreur lors de la récupération via Poe:", result.statusText);
+         updateSyncStatus('offline', "Échec de récupération");
+         return;
+       }
+       
+       if (result.status === "complete") {
+         const msg = result.responses[0];
+         if (!msg.content) {
+           console.log("Aucune donnée trouvée via Poe");
+           updateSyncStatus('offline', "Aucune donnée");
+           return;
+         }
+         
+         try {
+           // Essayer d'extraire et parser les données JSON
+           const jsonMatch = msg.content.match(/```json\n([\s\S]*?)\n```/) || 
+                            msg.content.match(/```\n([\s\S]*?)\n```/) || 
+                            msg.content.match(/{[\s\S]*}/);
+           
+           let jsonData;
+           if (jsonMatch) {
+             jsonData = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+           } else {
+             // Si aucun format JSON n'est détecté, essayer de parser tout le contenu
+             jsonData = JSON.parse(msg.content.trim());
+           }
+           
+           if (jsonData) {
+             console.log("Données récupérées depuis Poe avec succès");
+             
+             // Mettre à jour les données locales avec les données reçues
+             if (jsonData.users) appData.users = jsonData.users;
+             if (jsonData.requests) appData.requests = jsonData.requests;
+             if (jsonData.leaveBalances) appData.leaveBalances = jsonData.leaveBalances;
+             appData.lastSync = new Date().toISOString();
+             
+             dataReceived = true;
+             saveToLocalStorage();
+             updateSyncStatus('online', "Synchronisé (via Poe)");
+           }
+         } catch (error) {
+           console.error("Erreur lors du parsing des données JSON depuis Poe:", error);
+           updateSyncStatus('offline', "Données invalides");
+         }
+       }
+     });
+     
+     // Demander les données au bot
+     await window.Poe.sendUserMessage(
+       `@Claude-3-Opus GET_DATA`,
+       {
+         handler: "poe-fetch-handler",
+         stream: false,
+         openChat: false
+       }
+     );
+     
+     return dataReceived;
+   } catch (error) {
+     console.error("Erreur lors de la récupération via Poe:", error);
+     updateSyncStatus('offline', "Échec de connexion");
+     return false;
+   }
+ }
+
+ // Fonction pour récupérer les données depuis Google Sheets avec gestion d'erreurs améliorée
  async function fetchFromSheet(sheet) {
    try {
      updateSyncStatus('syncing', `Récupération des données de ${sheet}...`);
      
      const url = `${sheetsConfig.apiUrl}?action=get&sheet=${sheet}&key=${sheetsConfig.secretKey}`;
-     const response = await fetch(url);
      
-     if (!response.ok) {
-       throw new Error(`Erreur HTTP: ${response.status}`);
-     }
-     
-     const data = await response.json();
-     return data;
-   } catch (error) {
-     console.error(`Erreur lors de la récupération des données depuis ${sheet}:`, error);
-     updateSyncStatus('offline', "Échec de récupération");
-     throw error;
-   }
- }
-
- // Fonction pour ajouter une entrée à Google Sheets
- async function addToSheet(sheet, data) {
-   try {
-     const url = sheetsConfig.apiUrl;
-     const formData = new FormData();
-     formData.append('action', 'append');
-     formData.append('sheet', sheet);
-     formData.append('data', JSON.stringify(data));
-     formData.append('key', sheetsConfig.secretKey);
+     console.log(`Tentative de récupération depuis ${url}`);
      
      const response = await fetch(url, {
-       method: 'POST',
-       body: formData
+       method: 'GET',
+       headers: {
+         'Content-Type': 'application/json'
+       },
+       mode: 'cors'  // Permet les requêtes cross-origin - Poe peut bloquer si CORS n'est pas autorisé
      });
      
      if (!response.ok) {
        throw new Error(`Erreur HTTP: ${response.status}`);
      }
      
-     const result = await response.json();
-     return result;
+     // Vérifier si la réponse contient du texte avant de parser
+     const text = await response.text();
+     if (!text) {
+       throw new Error("Réponse vide reçue");
+     }
+     
+     try {
+       const data = JSON.parse(text);
+       return data;
+     } catch (parseError) {
+       console.error(`Erreur de parsing JSON pour ${sheet}:`, parseError);
+       console.log("Texte reçu:", text);
+       throw new Error("Format de réponse invalide");
+     }
    } catch (error) {
-     console.error(`Erreur lors de l'ajout à ${sheet}:`, error);
+     console.error(`Erreur lors de la récupération des données depuis ${sheet}:`, error);
+     updateSyncStatus('offline', "Échec de récupération");
+     
+     // Si Google Sheets échoue et que Poe est disponible, essayer Poe comme alternative
+     if (sheetsConfig.usePoe && window.Poe) {
+       console.log("Tentative de récupération via Poe...");
+       const success = await loadFromPoe();
+       if (success) return []; // Retourner un tableau vide car les données sont déjà mises à jour
+     }
+     
      throw error;
    }
  }
 
- // Synchroniser toutes les données avec Google Sheets
- async function syncAllDataToSheets(forceSync = false) {
+ // Synchroniser les données avec le serveur
+ async function syncAllDataToServer(forceSync = false) {
    if (sheetsConfig.syncing && !forceSync) {
      console.log("Synchronisation déjà en cours, veuillez patienter");
      return;
@@ -690,69 +826,70 @@
    
    try {
      if (forceSync) {
-       showLoading("Synchronisation en cours", "Veuillez patienter pendant que vos données sont synchronisées avec Google Sheets...");
+       showLoading("Synchronisation en cours", "Veuillez patienter pendant que vos données sont synchronisées avec le serveur...");
      }
      
-     // Synchroniser les utilisateurs
-     const usersData = appData.users.map(user => ({
-       id: user.id,
-       name: user.name,
-       email: user.email, 
-       role: user.role,
-       password: user.password
-     }));
+     // Données à synchroniser
+     const dataToSync = {
+       users: appData.users,
+       requests: appData.requests,
+       leaveBalances: appData.leaveBalances,
+       timestamp: new Date().toISOString()
+     };
      
-     // Synchroniser les demandes
-     const requestsData = appData.requests.map(req => ({
-       id: req.id,
-       type: req.type,
-       date: req.date,
-       details: req.details,
-       status: req.status,
-       employeeId: req.employeeId,
-       managerId: req.managerId,
-       createdAt: req.createdAt,
-       comment: req.comment || "",
-       leaveType: req.leaveType || "",
-       days: req.days || 0
-     }));
+     let syncSuccess = false;
      
-     // Synchroniser les soldes de congés
-     const balancesData = [];
-     for (const userId in appData.leaveBalances) {
-       const user = getUserById(parseInt(userId));
-       if (user && user.name !== "Employé inconnu") {
-         balancesData.push({
-           userId: parseInt(userId),
-           annual: appData.leaveBalances[userId].annual,
-           exceptional: appData.leaveBalances[userId].exceptional,
-           recovery: appData.leaveBalances[userId].recovery
-         });
+     // Essayer d'abord Google Sheets
+     try {
+       // Version simplifiée: envoyer toutes les données en une seule requête via la méthode POST
+       const response = await fetch(sheetsConfig.apiUrl, {
+         method: 'POST',
+         headers: {
+           'Content-Type': 'application/json'
+         },
+         body: JSON.stringify({
+           action: 'updateAll',
+           key: sheetsConfig.secretKey,
+           data: dataToSync
+         })
+       });
+       
+       if (!response.ok) {
+         throw new Error(`Erreur HTTP: ${response.status}`);
+       }
+       
+       syncSuccess = true;
+       console.log("Synchronisation réussie via Google Sheets");
+     } catch (sheetsError) {
+       console.error("Erreur lors de la synchronisation avec Google Sheets:", sheetsError);
+       
+       // Si Google Sheets échoue et que Poe est disponible, essayer Poe comme alternative
+       if (sheetsConfig.usePoe && window.Poe) {
+         console.log("Tentative de synchronisation via Poe...");
+         syncSuccess = await saveToPoe(dataToSync);
        }
      }
      
-     // Envoyer toutes les données à Google Sheets
-     await Promise.all([
-       updateSheetData('users', usersData),
-       updateSheetData('requests', requestsData),
-       updateSheetData('balances', balancesData)
-     ]);
-     
-     // Mettre à jour le timestamp de la dernière synchronisation
-     appData.lastSync = new Date().toISOString();
-     saveToLocalStorage();
-     
-     updateSyncStatus('online', "Synchronisé");
+     if (syncSuccess) {
+       // Mettre à jour le timestamp de la dernière synchronisation
+       appData.lastSync = new Date().toISOString();
+       saveToLocalStorage();
+       updateSyncStatus('online', "Synchronisé");
+     } else {
+       updateSyncStatus('offline', "Échec de synchronisation");
+     }
      
      if (forceSync) {
        hideLoading();
-       showNotification("Les données ont été synchronisées avec succès!", "success");
+       if (syncSuccess) {
+         showNotification("Les données ont été synchronisées avec succès!", "success");
+       } else {
+         showNotification("La synchronisation a échoué. Vos données sont sauvegardées localement.", "error");
+       }
      }
-     
-     console.log("Synchronisation terminée avec succès");
    } catch (error) {
-     console.error("Erreur lors de la synchronisation avec Google Sheets:", error);
-     updateSyncStatus('offline', "Échec de synchronisation");
+     console.error("Erreur lors de la synchronisation:", error);
+     updateSyncStatus('offline', "Erreur de synchronisation");
      
      if (forceSync) {
        hideLoading();
@@ -763,99 +900,76 @@
    }
  }
 
- // Mettre à jour les données d'une feuille spécifique
- async function updateSheetData(sheet, data) {
-   try {
-     // Pour cette fonction, nous allons d'abord effacer les données existantes
-     // puis ajouter les nouvelles données en une seule opération
-     const url = sheetsConfig.apiUrl;
-     const formData = new FormData();
-     formData.append('action', 'update');
-     formData.append('sheet', sheet);
-     formData.append('data', JSON.stringify(data));
-     formData.append('key', sheetsConfig.secretKey);
-     
-     const response = await fetch(url, {
-       method: 'POST',
-       body: formData
-     });
-     
-     if (!response.ok) {
-       throw new Error(`Erreur HTTP: ${response.status}`);
-     }
-     
-     return await response.json();
-   } catch (error) {
-     console.error(`Erreur lors de la mise à jour de ${sheet}:`, error);
-     throw error;
-   }
- }
-
- // Récupérer toutes les données depuis Google Sheets
- async function fetchAllDataFromSheets() {
-   showLoading("Récupération des données", "Veuillez patienter pendant que les données sont récupérées depuis Google Sheets...");
+ // Récupérer les données depuis le serveur
+ async function fetchDataFromServer() {
+   showLoading("Récupération des données", "Veuillez patienter pendant que les données sont récupérées depuis le serveur...");
    updateSyncStatus('syncing', "Récupération des données...");
    
    try {
-     // Récupérer les données des trois feuilles en parallèle
-     const [usersData, requestsData, balancesData] = await Promise.all([
-       fetchFromSheet('users'),
-       fetchFromSheet('requests'),
-       fetchFromSheet('balances')
-     ]);
+     let dataReceived = false;
      
-     if (usersData && usersData.length > 0) {
-       appData.users = usersData;
-     }
-     
-     if (requestsData && requestsData.length > 0) {
-       appData.requests = requestsData.map(req => ({
-         ...req,
-         id: parseInt(req.id),
-         employeeId: parseInt(req.employeeId),
-         managerId: parseInt(req.managerId),
-         days: req.days ? parseInt(req.days) : undefined
-       }));
-     }
-     
-     if (balancesData && balancesData.length > 0) {
-       appData.leaveBalances = {};
-       balancesData.forEach(balance => {
-         const userId = balance.userId.toString();
-         appData.leaveBalances[userId] = {
-           annual: parseInt(balance.annual),
-           exceptional: parseInt(balance.exceptional),
-           recovery: parseInt(balance.recovery)
-         };
-       });
-     }
-     
-     // Mise à jour du timestamp et sauvegarde en local
-     appData.lastSync = new Date().toISOString();
-     saveToLocalStorage();
-     
-     updateSyncStatus('online', "Données récupérées");
-     hideLoading();
-     
-     console.log("Données récupérées avec succès depuis Google Sheets");
-     
-     // Si l'utilisateur est connecté, mettre à jour les affichages
-     if (appData.currentUser) {
-       if (appData.currentUser.role === "Employé") {
-         updateLeaveBalanceDisplay();
-         updateEmployeeRequestsTable();
-       } else if (appData.currentUser.role === "Responsable") {
-         updateManagerRequestsTables();
-         updateUsersTable();
+     // Essayer d'abord Google Sheets
+     try {
+       // Version simplifiée: récupérer toutes les données en une seule requête
+       const response = await fetch(`${sheetsConfig.apiUrl}?action=getAll&key=${sheetsConfig.secretKey}`);
+       
+       if (!response.ok) {
+         throw new Error(`Erreur HTTP: ${response.status}`);
+       }
+       
+       const text = await response.text();
+       if (!text) {
+         throw new Error("Réponse vide reçue");
+       }
+       
+       const data = JSON.parse(text);
+       
+       if (data && (data.users || data.requests || data.leaveBalances)) {
+         console.log("Données récupérées avec succès depuis Google Sheets");
+         if (data.users) appData.users = data.users;
+         if (data.requests) appData.requests = data.requests;
+         if (data.leaveBalances) appData.leaveBalances = data.leaveBalances;
+         appData.lastSync = data.timestamp || new Date().toISOString();
+         dataReceived = true;
+       } else {
+         console.log("Aucune donnée valide reçue de Google Sheets");
+       }
+     } catch (sheetsError) {
+       console.error("Erreur lors de la récupération depuis Google Sheets:", sheetsError);
+       
+       // Si Google Sheets échoue et que Poe est disponible, essayer Poe comme alternative
+       if (sheetsConfig.usePoe && window.Poe) {
+         console.log("Tentative de récupération via Poe...");
+         dataReceived = await loadFromPoe();
        }
      }
      
-     return true;
+     // Sauvegarde locale et mise à jour de l'interface
+     if (dataReceived) {
+       saveToLocalStorage();
+       updateSyncStatus('online', "Données récupérées");
+       
+       // Si l'utilisateur est connecté, mettre à jour les affichages
+       if (appData.currentUser) {
+         if (appData.currentUser.role === "Employé") {
+           updateLeaveBalanceDisplay();
+           updateEmployeeRequestsTable();
+         } else if (appData.currentUser.role === "Responsable") {
+           updateManagerRequestsTables();
+           updateUsersTable();
+         }
+       }
+     } else {
+       updateSyncStatus('offline', "Aucune donnée disponible");
+     }
+     
+     hideLoading();
+     return dataReceived;
    } catch (error) {
-     console.error("Erreur lors de la récupération des données depuis Google Sheets:", error);
+     console.error("Erreur lors de la récupération des données:", error);
      updateSyncStatus('offline', "Échec de connexion");
      hideLoading();
-     showNotification("Impossible de se connecter à Google Sheets. Mode hors ligne activé.", "error");
+     showNotification("Impossible de se connecter au serveur. Mode hors ligne activé.", "error");
      return false;
    }
  }
@@ -866,7 +980,7 @@
    setInterval(() => {
      if (appData.currentUser) {
        console.log("Synchronisation périodique...");
-       syncAllDataToSheets();
+       syncAllDataToServer();
      }
    }, sheetsConfig.syncInterval);
    
@@ -1072,26 +1186,8 @@
      appData.requests.push(newRequest);
      saveToLocalStorage();
      
-     // Synchronisation avec Google Sheets après ajout d'une demande
-     addToSheet('requests', {
-       id: newRequest.id,
-       type: newRequest.type,
-       date: newRequest.date,
-       details: newRequest.details,
-       status: newRequest.status,
-       employeeId: newRequest.employeeId,
-       managerId: newRequest.managerId,
-       createdAt: newRequest.createdAt,
-       comment: newRequest.comment,
-       leaveType: newRequest.leaveType,
-       days: newRequest.days
-     }).then(() => {
-       console.log("Demande de congé synchronisée avec Google Sheets");
-       updateSyncStatus('online', "Synchronisé");
-     }).catch(error => {
-       console.error("Erreur lors de la synchronisation de la demande de congé:", error);
-       updateSyncStatus('offline', "Échec de synchronisation");
-     });
+     // Synchronisation après ajout d'une demande
+     syncAllDataToServer();
      
      form.reset();
      daysInput.value = '';
@@ -1157,24 +1253,8 @@
      appData.requests.push(newRequest);
      saveToLocalStorage();
      
-     // Synchronisation avec Google Sheets après ajout d'une demande
-     addToSheet('requests', {
-       id: newRequest.id,
-       type: newRequest.type,
-       date: newRequest.date,
-       details: newRequest.details,
-       status: newRequest.status,
-       employeeId: newRequest.employeeId,
-       managerId: newRequest.managerId,
-       createdAt: newRequest.createdAt,
-       comment: newRequest.comment
-     }).then(() => {
-       console.log("Demande d'autorisation synchronisée avec Google Sheets");
-       updateSyncStatus('online', "Synchronisé");
-     }).catch(error => {
-       console.error("Erreur lors de la synchronisation de la demande d'autorisation:", error);
-       updateSyncStatus('offline', "Échec de synchronisation");
-     });
+     // Synchronisation après ajout d'une demande
+     syncAllDataToServer();
      
      form.reset();
      otherReasonContainer.classList.add('hidden');
@@ -1216,24 +1296,8 @@
      appData.requests.push(newRequest);
      saveToLocalStorage();
      
-     // Synchronisation avec Google Sheets après ajout d'une demande
-     addToSheet('requests', {
-       id: newRequest.id,
-       type: newRequest.type,
-       date: newRequest.date,
-       details: newRequest.details,
-       status: newRequest.status,
-       employeeId: newRequest.employeeId,
-       managerId: newRequest.managerId,
-       createdAt: newRequest.createdAt,
-       comment: newRequest.comment
-     }).then(() => {
-       console.log("Demande d'avance synchronisée avec Google Sheets");
-       updateSyncStatus('online', "Synchronisé");
-     }).catch(error => {
-       console.error("Erreur lors de la synchronisation de la demande d'avance:", error);
-       updateSyncStatus('offline', "Échec de synchronisation");
-     });
+     // Synchronisation après ajout d'une demande
+     syncAllDataToServer();
      
      form.reset();
      updateEmployeeRequestsTable();
@@ -1403,28 +1467,11 @@
      if (appData.currentUser && appData.currentUser.id === userId && appData.currentUser.role === "Employé") {
        updateLeaveBalanceDisplay();
      }
-     
-     // Synchroniser les soldes de congés mis à jour
-     updateSheetData('balances', Object.entries(appData.leaveBalances).map(([userId, balance]) => ({
-       userId: parseInt(userId),
-       annual: balance.annual,
-       exceptional: balance.exceptional,
-       recovery: balance.recovery
-     }))).catch(error => {
-       console.error("Erreur lors de la mise à jour des soldes dans Google Sheets:", error);
-     });
-   }
-
-   // Mettre à jour la demande dans Google Sheets
-   try {
-     await updateSheetData('requests', appData.requests);
-     updateSyncStatus('online', "Synchronisé");
-   } catch (error) {
-     console.error("Erreur lors de la mise à jour de la demande dans Google Sheets:", error);
-     updateSyncStatus('offline', "Échec de synchronisation");
    }
 
    saveToLocalStorage();
+   syncAllDataToServer();
+   
    updateManagerRequestsTables();
    updateEmployeeRequestsTable();
    showNotification(`La demande de ${getUserById(request.employeeId).name} a été approuvée.`, "success");
@@ -1466,16 +1513,9 @@
    request.status = "Refusée";
    request.comment = comment;
    
-   // Mettre à jour la demande dans Google Sheets
-   try {
-     await updateSheetData('requests', appData.requests);
-     updateSyncStatus('online', "Synchronisé");
-   } catch (error) {
-     console.error("Erreur lors de la mise à jour de la demande dans Google Sheets:", error);
-     updateSyncStatus('offline', "Échec de synchronisation");
-   }
-   
    saveToLocalStorage();
+   syncAllDataToServer();
+   
    updateManagerRequestsTables();
    updateEmployeeRequestsTable();
    showNotification(`La demande de ${getUserById(request.employeeId).name} a été refusée.`, "success");
@@ -1524,8 +1564,8 @@
    showNotification(`Bienvenue, ${user.name} !`, "success");
    
    // Tentative de synchronisation au login
-   fetchAllDataFromSheets().catch(() => {
-     console.log("Impossible de récupérer les données depuis Google Sheets, utilisation des données locales");
+   fetchDataFromServer().catch(() => {
+     console.log("Impossible de récupérer les données du serveur, utilisation des données locales");
    });
  }
 
@@ -1605,16 +1645,9 @@
            }
          });
          
-         // Synchroniser les nouveaux utilisateurs avec Google Sheets
-         try {
-           await updateSheetData('users', appData.users);
-           updateSyncStatus('online', "Synchronisé");
-         } catch (error) {
-           console.error("Erreur lors de la synchronisation des utilisateurs avec Google Sheets:", error);
-           updateSyncStatus('offline', "Échec de synchronisation");
-         }
-         
          saveToLocalStorage();
+         syncAllDataToServer();
+         
          fileInput.value = '';
          updateUsersTable();
          showNotification(`${newUsers.length} utilisateur(s) importé(s) avec succès.`, "success");
@@ -1687,24 +1720,9 @@
            return;
          }
 
-         // Synchroniser les soldes de congés avec Google Sheets
-         const balancesData = Object.entries(appData.leaveBalances).map(([userId, balance]) => ({
-           userId: parseInt(userId),
-           annual: balance.annual,
-           exceptional: balance.exceptional,
-           recovery: balance.recovery
-         }));
-         
-         updateSheetData('balances', balancesData)
-           .then(() => {
-             updateSyncStatus('online', "Synchronisé");
-           })
-           .catch(error => {
-             console.error("Erreur lors de la synchronisation des soldes avec Google Sheets:", error);
-             updateSyncStatus('offline', "Échec de synchronisation");
-           });
-         
          saveToLocalStorage();
+         syncAllDataToServer();
+         
          fileInput.value = '';
          updateLeaveBalanceDisplay();
          showNotification(`${updatedCount} solde(s) de congé mis à jour avec succès.`, "success");
@@ -1819,31 +1837,11 @@
      // Initialisation des soldes de congés si c'est un employé
      if (role === "Employé") {
        initializeLeaveBalances(id);
-       
-       // Synchroniser les nouveaux soldes avec Google Sheets
-       const balancesData = Object.entries(appData.leaveBalances).map(([userId, balance]) => ({
-         userId: parseInt(userId),
-         annual: balance.annual,
-         exceptional: balance.exceptional,
-         recovery: balance.recovery
-       }));
-       
-       updateSheetData('balances', balancesData).catch(error => {
-         console.error("Erreur lors de la synchronisation des soldes avec Google Sheets:", error);
-       });
      }
 
-     // Synchroniser les utilisateurs avec Google Sheets
-     updateSheetData('users', appData.users)
-       .then(() => {
-         updateSyncStatus('online', "Synchronisé");
-       })
-       .catch(error => {
-         console.error("Erreur lors de la synchronisation des utilisateurs avec Google Sheets:", error);
-         updateSyncStatus('offline', "Échec de synchronisation");
-       });
-     
      saveToLocalStorage();
+     syncAllDataToServer();
+     
      updateUsersTable();
      closeModal();
      showNotification(`L'utilisateur ${name} a été ajouté avec succès.`, "success");
@@ -1943,18 +1941,6 @@
        if (newRole === "Employé") {
          // Si changement vers Employé, initialiser les soldes de congés
          initializeLeaveBalances(userId);
-         
-         // Synchroniser les soldes avec Google Sheets
-         const balancesData = Object.entries(appData.leaveBalances).map(([userId, balance]) => ({
-           userId: parseInt(userId),
-           annual: balance.annual,
-           exceptional: balance.exceptional,
-           recovery: balance.recovery
-         }));
-         
-         updateSheetData('balances', balancesData).catch(error => {
-           console.error("Erreur lors de la synchronisation des soldes avec Google Sheets:", error);
-         });
        }
 
        // Si l'utilisateur actuellement connecté est modifié
@@ -1966,17 +1952,9 @@
        }
      }
 
-     // Synchroniser les utilisateurs avec Google Sheets
-     updateSheetData('users', appData.users)
-       .then(() => {
-         updateSyncStatus('online', "Synchronisé");
-       })
-       .catch(error => {
-         console.error("Erreur lors de la synchronisation des utilisateurs avec Google Sheets:", error);
-         updateSyncStatus('offline', "Échec de synchronisation");
-       });
-     
      saveToLocalStorage();
+     syncAllDataToServer();
+     
      updateUsersTable();
      closeModal();
      showNotification(`L'utilisateur ${newName} a été modifié avec succès.`, "success");
@@ -2035,25 +2013,9 @@
      delete appData.leaveBalances[userId];
    }
    
-   // Synchroniser avec Google Sheets
-   try {
-     await Promise.all([
-       updateSheetData('users', appData.users),
-       updateSheetData('requests', appData.requests),
-       updateSheetData('balances', Object.entries(appData.leaveBalances).map(([userId, balance]) => ({
-         userId: parseInt(userId),
-         annual: balance.annual,
-         exceptional: balance.exceptional,
-         recovery: balance.recovery
-       })))
-     ]);
-     updateSyncStatus('online', "Synchronisé");
-   } catch (error) {
-     console.error("Erreur lors de la synchronisation des données avec Google Sheets:", error);
-     updateSyncStatus('offline', "Échec de synchronisation");
-   }
-   
    saveToLocalStorage();
+   syncAllDataToServer();
+   
    updateUsersTable();
    updateManagerRequestsTables();
    closeModal();
@@ -2125,25 +2087,8 @@
        }
      });
      
-     // Synchroniser avec Google Sheets
-     try {
-       await Promise.all([
-         updateSheetData('users', appData.users),
-         updateSheetData('requests', appData.requests),
-         updateSheetData('balances', Object.entries(appData.leaveBalances).map(([userId, balance]) => ({
-           userId: parseInt(userId),
-           annual: balance.annual,
-           exceptional: balance.exceptional,
-           recovery: balance.recovery
-         })))
-       ]);
-       updateSyncStatus('online', "Synchronisé");
-     } catch (error) {
-       console.error("Erreur lors de la synchronisation des données avec Google Sheets:", error);
-       updateSyncStatus('offline', "Échec de synchronisation");
-     }
-     
      saveToLocalStorage();
+     syncAllDataToServer();
      
      // Mettre à jour l'interface si l'utilisateur est connecté
      if (appData.currentUser) {
@@ -2182,7 +2127,7 @@
  // Configuration du bouton de synchronisation
  function setupSyncDataBtn() {
    document.getElementById('sync-data-btn').addEventListener('click', function() {
-     syncAllDataToSheets(true);
+     syncAllDataToServer(true);
    });
  }
 
@@ -2279,14 +2224,6 @@
      // Chargement des données locales en premier pour l'affichage rapide
      await loadFromLocalStorage();
      
-     // Ensuite, essayer de récupérer les données depuis Google Sheets
-     fetchAllDataFromSheets().catch(error => {
-       console.log("Impossible de récupérer les données depuis Google Sheets, utilisation des données locales");
-     });
-     
-     // Mise en place de la synchronisation périodique
-     setupPeriodicSync();
-     
      // Mise en place des différents gestionnaires d'événements
      setupLoginForm();
      setupLeaveForm();
@@ -2308,31 +2245,22 @@
      // Masquer l'écran de chargement
      hideLoading();
      
+     // Mise en place de la synchronisation périodique
+     setupPeriodicSync();
+     
+     // Tenter de récupérer les données depuis le serveur en arrière-plan
+     fetchDataFromServer().catch(error => {
+       console.log("Mode hors ligne activé", error);
+     });
+     
      console.log("Application initialisée avec succès");
    } catch (error) {
      console.error("Erreur lors de l'initialisation de l'application:", error);
      hideLoading();
      showNotification("Une erreur est survenue lors de l'initialisation de l'application.", "error");
      
-     // Fallback vers le mode local uniquement
-     await loadFromLocalStorage();
+     // Fallback vers le mode local uniquement avec les données déjà chargées
      updateSyncStatus('offline', "Erreur d'initialisation");
-     
-     // Mise en place des différents gestionnaires d'événements en mode dégradé
-     setupLoginForm();
-     setupLeaveForm();
-     setupLeaveRequestForm();
-     setupAdvanceRequestForm();
-     setupExcelImport();
-     setupLeaveBalanceImport();
-     setupAddUserBtn();
-     setupResetDataBtn();
-     setupExportDataBtn();
-     
-     // Initialisation des champs de date avec la date du jour
-     initDateFields();
-     
-     // Affichage de la vue de connexion
      showView('login-view');
    }
  }
