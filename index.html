@@ -7,6 +7,11 @@
  <script src="https://cdn.tailwindcss.com"></script>
  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+ <!-- Firebase App (la base) est toujours requise et doit être chargée en premier -->
+ <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+ <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+ <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
  <script>
  tailwind.config = {
  darkMode: 'class',
@@ -47,7 +52,7 @@
  @keyframes fadeInView { from { opacity: 0; } to { opacity: 1; } }
  .custom-table { border-collapse: separate; border-spacing: 0; }
  .custom-table th, .custom-table td { border-bottom-width: 1px; }
- .status-badge { display: inline-flex; align align-items: center; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; }
+ .status-badge { display: inline-flex; align-items: center; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; }
  .status-pending { background-color: rgba(234, 179, 8, 0.1); color: rgb(234, 179, 8); border: 1px solid rgba(234, 179, 8, 0.2); }
  .status-approved { background-color: rgba(34, 197, 94, 0.1); color: rgb(34, 197, 94); border: 1px solid rgba(34, 197, 94, 0.2); }
  .status-rejected { background-color: rgba(239, 68, 68, 0.1); color: rgb(239, 68, 68); border: 1px solid rgba(239, 68, 68, 0.2); }
@@ -485,33 +490,126 @@
  </div>
 
  <script>
+ // Configuration de Firebase avec notre application spécifique
+ const firebaseConfig = {
+   apiKey: "AIzaSyBwgqzrx_UW7PzKMBkMUcSNxHK3QbQ2FLA",
+   authDomain: "gestion-conges-app.firebaseapp.com",
+   projectId: "gestion-conges-app",
+   storageBucket: "gestion-conges-app.appspot.com",
+   messagingSenderId: "1036901415353",
+   appId: "1:1036901415353:web:87c1e1c85bf0ea2bf12a65"
+ };
+
+ // Initialiser Firebase
+ firebase.initializeApp(firebaseConfig);
+ const db = firebase.firestore();
+ 
  // Structure des données de l'application
  const appData = {
    users: [],
    requests: [],
    leaveBalances: {},
    currentUser: null,
-   lastSync: null
+   lastSync: null,
+   pendingChanges: [], // Suivi des modifications en attente de synchronisation
+   isOnline: navigator.onLine
  };
 
- // Stockage local en mémoire (pour remplacer localStorage qui n'est pas disponible dans le sandbox)
- const memoryStorage = {
-   data: {},
-   setItem: function(key, value) {
-     this.data[key] = value;
+ // Configuration du stockage local - utilise localForage pour un stockage persistant
+ const localDB = {
+   async initializeStorage() {
+     // Configurer localForage pour chaque type de données
+     this.users = localforage.createInstance({
+       name: 'congés-app',
+       storeName: 'users'
+     });
+     
+     this.requests = localforage.createInstance({
+       name: 'congés-app',
+       storeName: 'requests'
+     });
+     
+     this.leaveBalances = localforage.createInstance({
+       name: 'congés-app',
+       storeName: 'leaveBalances'
+     });
+     
+     this.metadata = localforage.createInstance({
+       name: 'congés-app',
+       storeName: 'metadata'
+     });
+     
+     // Initialiser la file d'attente des opérations
+     this.pendingQueue = localforage.createInstance({
+       name: 'congés-app',
+       storeName: 'pendingQueue'
+     });
    },
-   getItem: function(key) {
-     return this.data[key] || null;
+   
+   async saveUsers(users) {
+     await this.users.setItem('allUsers', users);
+   },
+   
+   async getUsers() {
+     return await this.users.getItem('allUsers') || [];
+   },
+   
+   async saveRequests(requests) {
+     await this.requests.setItem('allRequests', requests);
+   },
+   
+   async getRequests() {
+     return await this.requests.getItem('allRequests') || [];
+   },
+   
+   async saveLeaveBalances(balances) {
+     await this.leaveBalances.setItem('allBalances', balances);
+   },
+   
+   async getLeaveBalances() {
+     return await this.leaveBalances.getItem('allBalances') || {};
+   },
+   
+   async saveLastSync(timestamp) {
+     await this.metadata.setItem('lastSync', timestamp);
+   },
+   
+   async getLastSync() {
+     return await this.metadata.getItem('lastSync');
+   },
+   
+   async saveCurrentUser(user) {
+     await this.metadata.setItem('currentUser', user);
+   },
+   
+   async getCurrentUser() {
+     return await this.metadata.getItem('currentUser');
+   },
+   
+   async addPendingOperation(operation) {
+     const queue = await this.pendingQueue.getItem('operations') || [];
+     queue.push({
+       ...operation,
+       timestamp: new Date().toISOString()
+     });
+     await this.pendingQueue.setItem('operations', queue);
+   },
+   
+   async getPendingOperations() {
+     return await this.pendingQueue.getItem('operations') || [];
+   },
+   
+   async clearPendingOperations() {
+     await this.pendingQueue.setItem('operations', []);
+   },
+   
+   async removePendingOperation(index) {
+     const queue = await this.pendingQueue.getItem('operations') || [];
+     if (index >= 0 && index < queue.length) {
+       queue.splice(index, 1);
+       await this.pendingQueue.setItem('operations', queue);
+     }
    }
- };
-
- // Configuration de l'API
- const sheetsConfig = {
-   apiUrl: "https://script.google.com/macros/s/AKfycbx1da0SsSP_7hGxL2AQIbn1_DezdE_tHYU9ac_XbnZB8h4yzoiJo94uS12ptifcEzTeLg/exec",
-   secretKey: "monsecret123",
-   syncInterval: 300000, // 5 minutes en millisecondes
-   syncing: false, // Indique si une synchronisation est en cours
-   usePoe: true // Utiliser Poe comme alternative si Google Sheets ne fonctionne pas
  };
 
  // Afficher l'overlay de chargement
@@ -565,54 +663,66 @@
    return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
  }
 
- // Sauvegarder les données dans le stockage mémoire pour le fonctionnement hors ligne
- function saveToLocalStorage() {
+ // Enregistrer les modifications locales
+ async function saveToLocalStorage() {
    try {
-     memoryStorage.setItem('users', JSON.stringify(appData.users));
-     memoryStorage.setItem('requests', JSON.stringify(appData.requests));
-     memoryStorage.setItem('leaveBalances', JSON.stringify(appData.leaveBalances));
-     memoryStorage.setItem('lastSync', appData.lastSync);
-     console.log("Données sauvegardées en mémoire avec succès");
+     // Enregistrement de toutes les données dans le stockage local
+     await localDB.saveUsers(appData.users);
+     await localDB.saveRequests(appData.requests);
+     await localDB.saveLeaveBalances(appData.leaveBalances);
+     await localDB.saveLastSync(appData.lastSync);
+     
+     if (appData.currentUser) {
+       await localDB.saveCurrentUser(appData.currentUser);
+     }
+     
+     console.log("Données sauvegardées localement avec succès");
    } catch (error) {
-     console.error("Erreur lors de la sauvegarde en mémoire:", error);
-     showNotification("Une erreur est survenue lors de la sauvegarde des données en mémoire.", "error");
+     console.error("Erreur lors de la sauvegarde locale:", error);
+     showNotification("Une erreur est survenue lors de la sauvegarde locale des données.", "error");
    }
  }
 
- // Charger les données depuis le stockage mémoire
+ // Charger les données depuis le stockage local
  async function loadFromLocalStorage() {
    try {
-     const users = memoryStorage.getItem('users');
-     if (users) {
-       appData.users = JSON.parse(users);
+     // Récupération des données du stockage local
+     const users = await localDB.getUsers();
+     if (users && users.length > 0) {
+       appData.users = users;
      }
      
-     const requests = memoryStorage.getItem('requests');
-     if (requests) {
-       appData.requests = JSON.parse(requests);
+     const requests = await localDB.getRequests();
+     if (requests && requests.length > 0) {
+       appData.requests = requests;
      }
      
-     const leaveBalances = memoryStorage.getItem('leaveBalances');
-     if (leaveBalances) {
-       appData.leaveBalances = JSON.parse(leaveBalances);
+     const leaveBalances = await localDB.getLeaveBalances();
+     if (leaveBalances && Object.keys(leaveBalances).length > 0) {
+       appData.leaveBalances = leaveBalances;
      }
      
-     const lastSync = memoryStorage.getItem('lastSync');
+     const lastSync = await localDB.getLastSync();
      if (lastSync) {
        appData.lastSync = lastSync;
      }
      
-     console.log("Données chargées depuis la mémoire avec succès");
+     const currentUser = await localDB.getCurrentUser();
+     if (currentUser) {
+       appData.currentUser = currentUser;
+     }
+     
+     console.log("Données chargées depuis le stockage local avec succès");
      
      // Si aucune donnée n'est disponible, créer les données par défaut
      if (appData.users.length === 0) {
-       console.log("Aucune donnée trouvée, création des données par défaut");
+       console.log("Aucun utilisateur trouvé, création des données par défaut");
        await createDefaultData();
      }
      
      return true;
    } catch (error) {
-     console.error("Erreur lors du chargement depuis la mémoire:", error);
+     console.error("Erreur lors du chargement depuis le stockage local:", error);
      return false;
    }
  }
@@ -620,7 +730,7 @@
  // Créer les données par défaut
  async function createDefaultData() {
    const defaultUsers = [
-     { id: 76, name: "ALILI HOUSSEM", email: "ALILIHOUSSEM@EASYWAYELECTO.COM", role: "Responsable", password: "1234" },
+     { id: 76, name: "ALILI HOUSSEM", email: "alilihoussem@easywayelecto.com", role: "Responsable", password: "1234" },
      { id: 1, name: "John Doe", email: "john.doe@example.com", role: "Employé", password: "1234" }
    ];
    
@@ -639,189 +749,149 @@
      }
    }
    
-   saveToLocalStorage();
+   await saveToLocalStorage();
  }
 
- // Alternative: utiliser Poe pour stocker/récupérer des données
- async function saveToPoe(data) {
-   try {
-     if (!window.Poe) {
-       console.error("API Poe non disponible");
-       return false;
-     }
-     
-     updateSyncStatus('syncing', "Enregistrement via Poe...");
-     
-     // Enregistrer un gestionnaire pour recevoir la réponse
-     window.Poe.registerHandler("poe-storage-handler", (result) => {
-       if (result.status === "error") {
-         console.error("Erreur lors de l'enregistrement via Poe:", result.statusText);
-         updateSyncStatus('offline', "Échec de l'enregistrement");
-         return false;
-       }
-       
-       if (result.status === "complete") {
-         updateSyncStatus('online', "Synchronisé (via Poe)");
-         return true;
-       }
-     });
-     
-     // Envoyer les données au bot
-     const prompt = `STORE_DATA ${JSON.stringify(data)}`;
-     await window.Poe.sendUserMessage(
-       `@Claude-3-Opus ${prompt}`,
-       {
-         handler: "poe-storage-handler",
-         stream: false,
-         openChat: false
-       }
-     );
-     
-     return true;
-   } catch (error) {
-     console.error("Erreur lors de l'enregistrement via Poe:", error);
-     updateSyncStatus('offline', "Échec de l'enregistrement");
-     return false;
-   }
+ // Écouteurs d'état de connexion réseau
+ function setupNetworkListeners() {
+   window.addEventListener('online', () => {
+     appData.isOnline = true;
+     updateSyncStatus('online', 'Connexion rétablie');
+     // Tenter de synchroniser les changements en attente
+     processPendingOperations();
+   });
+   
+   window.addEventListener('offline', () => {
+     appData.isOnline = false;
+     updateSyncStatus('offline', 'Hors ligne');
+   });
  }
 
- async function loadFromPoe() {
+ // Firebase - Récupérer les utilisateurs
+ async function fetchUsersFromFirebase() {
    try {
-     if (!window.Poe) {
-       console.error("API Poe non disponible");
-       return false;
-     }
-     
-     updateSyncStatus('syncing', "Récupération via Poe...");
-     
-     let dataReceived = false;
-     
-     // Enregistrer un gestionnaire pour recevoir la réponse
-     window.Poe.registerHandler("poe-fetch-handler", (result) => {
-       if (result.status === "error") {
-         console.error("Erreur lors de la récupération via Poe:", result.statusText);
-         updateSyncStatus('offline', "Échec de récupération");
-         return;
-       }
-       
-       if (result.status === "complete") {
-         const msg = result.responses[0];
-         if (!msg.content) {
-           console.log("Aucune donnée trouvée via Poe");
-           updateSyncStatus('offline', "Aucune donnée");
-           return;
-         }
-         
-         try {
-           // Essayer d'extraire et parser les données JSON
-           const jsonMatch = msg.content.match(/```json\n([\s\S]*?)\n```/) || 
-                            msg.content.match(/```\n([\s\S]*?)\n```/) || 
-                            msg.content.match(/{[\s\S]*}/);
-           
-           let jsonData;
-           if (jsonMatch) {
-             jsonData = JSON.parse(jsonMatch[1] || jsonMatch[0]);
-           } else {
-             // Si aucun format JSON n'est détecté, essayer de parser tout le contenu
-             jsonData = JSON.parse(msg.content.trim());
-           }
-           
-           if (jsonData) {
-             console.log("Données récupérées depuis Poe avec succès");
-             
-             // Mettre à jour les données locales avec les données reçues
-             if (jsonData.users) appData.users = jsonData.users;
-             if (jsonData.requests) appData.requests = jsonData.requests;
-             if (jsonData.leaveBalances) appData.leaveBalances = jsonData.leaveBalances;
-             appData.lastSync = new Date().toISOString();
-             
-             dataReceived = true;
-             saveToLocalStorage();
-             updateSyncStatus('online', "Synchronisé (via Poe)");
-           }
-         } catch (error) {
-           console.error("Erreur lors du parsing des données JSON depuis Poe:", error);
-           updateSyncStatus('offline', "Données invalides");
-         }
-       }
-     });
-     
-     // Demander les données au bot
-     await window.Poe.sendUserMessage(
-       `@Claude-3-Opus GET_DATA`,
-       {
-         handler: "poe-fetch-handler",
-         stream: false,
-         openChat: false
-       }
-     );
-     
-     return dataReceived;
+     const snapshot = await db.collection('users').get();
+     return snapshot.docs.map(doc => doc.data());
    } catch (error) {
-     console.error("Erreur lors de la récupération via Poe:", error);
-     updateSyncStatus('offline', "Échec de connexion");
-     return false;
-   }
- }
-
- // Fonction pour récupérer les données depuis Google Sheets avec gestion d'erreurs améliorée
- async function fetchFromSheet(sheet) {
-   try {
-     updateSyncStatus('syncing', `Récupération des données de ${sheet}...`);
-     
-     const url = `${sheetsConfig.apiUrl}?action=get&sheet=${sheet}&key=${sheetsConfig.secretKey}`;
-     
-     console.log(`Tentative de récupération depuis ${url}`);
-     
-     const response = await fetch(url, {
-       method: 'GET',
-       headers: {
-         'Content-Type': 'application/json'
-       },
-       mode: 'cors'  // Permet les requêtes cross-origin - Poe peut bloquer si CORS n'est pas autorisé
-     });
-     
-     if (!response.ok) {
-       throw new Error(`Erreur HTTP: ${response.status}`);
-     }
-     
-     // Vérifier si la réponse contient du texte avant de parser
-     const text = await response.text();
-     if (!text) {
-       throw new Error("Réponse vide reçue");
-     }
-     
-     try {
-       const data = JSON.parse(text);
-       return data;
-     } catch (parseError) {
-       console.error(`Erreur de parsing JSON pour ${sheet}:`, parseError);
-       console.log("Texte reçu:", text);
-       throw new Error("Format de réponse invalide");
-     }
-   } catch (error) {
-     console.error(`Erreur lors de la récupération des données depuis ${sheet}:`, error);
-     updateSyncStatus('offline', "Échec de récupération");
-     
-     // Si Google Sheets échoue et que Poe est disponible, essayer Poe comme alternative
-     if (sheetsConfig.usePoe && window.Poe) {
-       console.log("Tentative de récupération via Poe...");
-       const success = await loadFromPoe();
-       if (success) return []; // Retourner un tableau vide car les données sont déjà mises à jour
-     }
-     
+     console.error('Erreur lors de la récupération des utilisateurs:', error);
      throw error;
    }
  }
 
- // Synchroniser les données avec le serveur
- async function syncAllDataToServer(forceSync = false) {
-   if (sheetsConfig.syncing && !forceSync) {
-     console.log("Synchronisation déjà en cours, veuillez patienter");
+ // Firebase - Récupérer les demandes
+ async function fetchRequestsFromFirebase() {
+   try {
+     const snapshot = await db.collection('requests').get();
+     return snapshot.docs.map(doc => doc.data());
+   } catch (error) {
+     console.error('Erreur lors de la récupération des demandes:', error);
+     throw error;
+   }
+ }
+
+ // Firebase - Récupérer les soldes de congés
+ async function fetchLeaveBalancesFromFirebase() {
+   try {
+     const snapshot = await db.collection('leaveBalances').get();
+     
+     // Convertir les documents en un objet avec les IDs comme clés
+     const balances = {};
+     snapshot.docs.forEach(doc => {
+       const data = doc.data();
+       balances[data.userId] = {
+         annual: data.annual,
+         exceptional: data.exceptional,
+         recovery: data.recovery
+       };
+     });
+     
+     return balances;
+   } catch (error) {
+     console.error('Erreur lors de la récupération des soldes de congés:', error);
+     throw error;
+   }
+ }
+
+ // Firebase - Mettre à jour ou ajouter un utilisateur
+ async function updateUserInFirebase(user) {
+   try {
+     // Utiliser l'ID de l'utilisateur comme identifiant de document
+     await db.collection('users').doc(user.id.toString()).set(user);
+     return true;
+   } catch (error) {
+     console.error(`Erreur lors de la mise à jour de l'utilisateur ${user.id}:`, error);
+     throw error;
+   }
+ }
+
+ // Firebase - Mettre à jour ou ajouter une demande
+ async function updateRequestInFirebase(request) {
+   try {
+     // Utiliser l'ID de la demande comme identifiant de document
+     await db.collection('requests').doc(request.id.toString()).set(request);
+     return true;
+   } catch (error) {
+     console.error(`Erreur lors de la mise à jour de la demande ${request.id}:`, error);
+     throw error;
+   }
+ }
+
+ // Firebase - Mettre à jour ou ajouter un solde de congés
+ async function updateLeaveBalanceInFirebase(userId, balance) {
+   try {
+     await db.collection('leaveBalances').doc(userId.toString()).set({
+       userId: userId,
+       annual: balance.annual,
+       exceptional: balance.exceptional,
+       recovery: balance.recovery
+     });
+     return true;
+   } catch (error) {
+     console.error(`Erreur lors de la mise à jour du solde de congés pour l'utilisateur ${userId}:`, error);
+     throw error;
+   }
+ }
+
+ // Firebase - Supprimer un utilisateur
+ async function deleteUserFromFirebase(userId) {
+   try {
+     await db.collection('users').doc(userId.toString()).delete();
+     return true;
+   } catch (error) {
+     console.error(`Erreur lors de la suppression de l'utilisateur ${userId}:`, error);
+     throw error;
+   }
+ }
+
+ // Firebase - Supprimer une demande
+ async function deleteRequestFromFirebase(requestId) {
+   try {
+     await db.collection('requests').doc(requestId.toString()).delete();
+     return true;
+   } catch (error) {
+     console.error(`Erreur lors de la suppression de la demande ${requestId}:`, error);
+     throw error;
+   }
+ }
+
+ // Firebase - Supprimer un solde de congés
+ async function deleteLeaveBalanceFromFirebase(userId) {
+   try {
+     await db.collection('leaveBalances').doc(userId.toString()).delete();
+     return true;
+   } catch (error) {
+     console.error(`Erreur lors de la suppression du solde de congés pour l'utilisateur ${userId}:`, error);
+     throw error;
+   }
+ }
+
+ // Synchroniser toutes les données avec Firebase
+ async function syncAllDataWithFirebase(forceSync = false) {
+   if (!appData.isOnline) {
+     showNotification("Vous êtes hors ligne. Les changements seront synchronisés automatiquement lors du retour en ligne.", "error");
      return;
    }
    
-   sheetsConfig.syncing = true;
    updateSyncStatus('syncing', "Synchronisation en cours...");
    
    try {
@@ -829,144 +899,100 @@
        showLoading("Synchronisation en cours", "Veuillez patienter pendant que vos données sont synchronisées avec le serveur...");
      }
      
-     // Données à synchroniser
-     const dataToSync = {
-       users: appData.users,
-       requests: appData.requests,
-       leaveBalances: appData.leaveBalances,
-       timestamp: new Date().toISOString()
-     };
+     // Traiter d'abord les opérations en attente
+     await processPendingOperations();
      
-     let syncSuccess = false;
-     
-     // Essayer d'abord Google Sheets
-     try {
-       // Version simplifiée: envoyer toutes les données en une seule requête via la méthode POST
-       const response = await fetch(sheetsConfig.apiUrl, {
-         method: 'POST',
-         headers: {
-           'Content-Type': 'application/json'
-         },
-         body: JSON.stringify({
-           action: 'updateAll',
-           key: sheetsConfig.secretKey,
-           data: dataToSync
-         })
-       });
-       
-       if (!response.ok) {
-         throw new Error(`Erreur HTTP: ${response.status}`);
-       }
-       
-       syncSuccess = true;
-       console.log("Synchronisation réussie via Google Sheets");
-     } catch (sheetsError) {
-       console.error("Erreur lors de la synchronisation avec Google Sheets:", sheetsError);
-       
-       // Si Google Sheets échoue et que Poe est disponible, essayer Poe comme alternative
-       if (sheetsConfig.usePoe && window.Poe) {
-         console.log("Tentative de synchronisation via Poe...");
-         syncSuccess = await saveToPoe(dataToSync);
-       }
+     // Mettre à jour tous les utilisateurs
+     for (const user of appData.users) {
+       await updateUserInFirebase(user);
      }
      
-     if (syncSuccess) {
-       // Mettre à jour le timestamp de la dernière synchronisation
-       appData.lastSync = new Date().toISOString();
-       saveToLocalStorage();
-       updateSyncStatus('online', "Synchronisé");
-     } else {
-       updateSyncStatus('offline', "Échec de synchronisation");
+     // Mettre à jour toutes les demandes
+     for (const request of appData.requests) {
+       await updateRequestInFirebase(request);
      }
+     
+     // Mettre à jour tous les soldes de congés
+     for (const userId in appData.leaveBalances) {
+       await updateLeaveBalanceInFirebase(parseInt(userId), appData.leaveBalances[userId]);
+     }
+     
+     // Mettre à jour le timestamp de la dernière synchronisation
+     appData.lastSync = new Date().toISOString();
+     await localDB.saveLastSync(appData.lastSync);
+     
+     updateSyncStatus('online', "Synchronisé");
      
      if (forceSync) {
        hideLoading();
-       if (syncSuccess) {
-         showNotification("Les données ont été synchronisées avec succès!", "success");
-       } else {
-         showNotification("La synchronisation a échoué. Vos données sont sauvegardées localement.", "error");
-       }
+       showNotification("Les données ont été synchronisées avec succès!", "success");
      }
+     
+     console.log("Synchronisation terminée avec succès");
    } catch (error) {
-     console.error("Erreur lors de la synchronisation:", error);
-     updateSyncStatus('offline', "Erreur de synchronisation");
+     console.error("Erreur lors de la synchronisation avec Firebase:", error);
+     updateSyncStatus('offline', "Échec de synchronisation");
      
      if (forceSync) {
        hideLoading();
-       showNotification("La synchronisation a échoué. Vérifiez votre connexion et réessayez.", "error");
+       showNotification("La synchronisation a échoué. Vos données sont sauvegardées localement.", "error");
      }
-   } finally {
-     sheetsConfig.syncing = false;
    }
  }
 
- // Récupérer les données depuis le serveur
- async function fetchDataFromServer() {
+ // Récupérer toutes les données depuis Firebase
+ async function fetchAllDataFromFirebase() {
+   if (!appData.isOnline) {
+     showNotification("Vous êtes hors ligne. Utilisation des données locales.", "error");
+     return false;
+   }
+   
    showLoading("Récupération des données", "Veuillez patienter pendant que les données sont récupérées depuis le serveur...");
    updateSyncStatus('syncing', "Récupération des données...");
    
    try {
-     let dataReceived = false;
+     // Récupérer les données des trois collections en parallèle
+     const [users, requests, leaveBalances] = await Promise.all([
+       fetchUsersFromFirebase(),
+       fetchRequestsFromFirebase(),
+       fetchLeaveBalancesFromFirebase()
+     ]);
      
-     // Essayer d'abord Google Sheets
-     try {
-       // Version simplifiée: récupérer toutes les données en une seule requête
-       const response = await fetch(`${sheetsConfig.apiUrl}?action=getAll&key=${sheetsConfig.secretKey}`);
-       
-       if (!response.ok) {
-         throw new Error(`Erreur HTTP: ${response.status}`);
-       }
-       
-       const text = await response.text();
-       if (!text) {
-         throw new Error("Réponse vide reçue");
-       }
-       
-       const data = JSON.parse(text);
-       
-       if (data && (data.users || data.requests || data.leaveBalances)) {
-         console.log("Données récupérées avec succès depuis Google Sheets");
-         if (data.users) appData.users = data.users;
-         if (data.requests) appData.requests = data.requests;
-         if (data.leaveBalances) appData.leaveBalances = data.leaveBalances;
-         appData.lastSync = data.timestamp || new Date().toISOString();
-         dataReceived = true;
-       } else {
-         console.log("Aucune donnée valide reçue de Google Sheets");
-       }
-     } catch (sheetsError) {
-       console.error("Erreur lors de la récupération depuis Google Sheets:", sheetsError);
-       
-       // Si Google Sheets échoue et que Poe est disponible, essayer Poe comme alternative
-       if (sheetsConfig.usePoe && window.Poe) {
-         console.log("Tentative de récupération via Poe...");
-         dataReceived = await loadFromPoe();
-       }
+     if (users && users.length > 0) {
+       appData.users = users;
      }
      
-     // Sauvegarde locale et mise à jour de l'interface
-     if (dataReceived) {
-       saveToLocalStorage();
-       updateSyncStatus('online', "Données récupérées");
-       
-       // Si l'utilisateur est connecté, mettre à jour les affichages
-       if (appData.currentUser) {
-         if (appData.currentUser.role === "Employé") {
-           updateLeaveBalanceDisplay();
-           updateEmployeeRequestsTable();
-         } else if (appData.currentUser.role === "Responsable") {
-           updateManagerRequestsTables();
-           updateUsersTable();
-         }
-       }
-     } else {
-       updateSyncStatus('offline', "Aucune donnée disponible");
+     if (requests && requests.length > 0) {
+       appData.requests = requests;
      }
      
+     if (leaveBalances && Object.keys(leaveBalances).length > 0) {
+       appData.leaveBalances = leaveBalances;
+     }
+     
+     // Mise à jour du timestamp et sauvegarde en local
+     appData.lastSync = new Date().toISOString();
+     await saveToLocalStorage();
+     
+     updateSyncStatus('online', "Données récupérées");
      hideLoading();
-     return dataReceived;
+     
+     console.log("Données récupérées avec succès depuis Firebase");
+     
+     // Si l'utilisateur est connecté, mettre à jour les affichages
+     if (appData.currentUser) {
+       if (appData.currentUser.role === "Employé") {
+         updateLeaveBalanceDisplay();
+         updateEmployeeRequestsTable();
+       } else if (appData.currentUser.role === "Responsable") {
+         updateManagerRequestsTables();
+         updateUsersTable();
+       }
+     }
+     
+     return true;
    } catch (error) {
-     console.error("Erreur lors de la récupération des données:", error);
+     console.error("Erreur lors de la récupération des données depuis Firebase:", error);
      updateSyncStatus('offline', "Échec de connexion");
      hideLoading();
      showNotification("Impossible de se connecter au serveur. Mode hors ligne activé.", "error");
@@ -974,19 +1000,94 @@
    }
  }
 
+ // Ajouter une opération à la file d'attente de synchronisation
+ async function queueOperation(operation) {
+   await localDB.addPendingOperation(operation);
+   
+   // Si nous sommes en ligne, traiter immédiatement
+   if (appData.isOnline) {
+     processPendingOperations();
+   }
+ }
+
+ // Traiter les opérations en attente de synchronisation
+ async function processPendingOperations() {
+   if (!appData.isOnline) return;
+   
+   updateSyncStatus('syncing', "Traitement des modifications en attente...");
+   
+   try {
+     const operations = await localDB.getPendingOperations();
+     
+     if (operations.length === 0) {
+       updateSyncStatus('online', "Synchronisé");
+       return;
+     }
+     
+     for (let i = 0; i < operations.length; i++) {
+       const op = operations[i];
+       let success = false;
+       
+       try {
+         switch (op.type) {
+           case 'addUser':
+           case 'updateUser':
+             success = await updateUserInFirebase(op.data);
+             break;
+           case 'deleteUser':
+             success = await deleteUserFromFirebase(op.data.id);
+             break;
+           case 'addRequest':
+           case 'updateRequest':
+             success = await updateRequestInFirebase(op.data);
+             break;
+           case 'deleteRequest':
+             success = await deleteRequestFromFirebase(op.data.id);
+             break;
+           case 'updateLeaveBalance':
+             success = await updateLeaveBalanceInFirebase(op.data.userId, op.data.balance);
+             break;
+           case 'deleteLeaveBalance':
+             success = await deleteLeaveBalanceFromFirebase(op.data.userId);
+             break;
+         }
+         
+         if (success) {
+           await localDB.removePendingOperation(i);
+           i--; // Ajuster l'index après suppression
+         }
+       } catch (opError) {
+         console.error(`Erreur lors du traitement de l'opération #${i}:`, opError);
+         // Continuer avec la prochaine opération
+       }
+     }
+     
+     // Vérifier s'il reste des opérations non traitées
+     const remainingOps = await localDB.getPendingOperations();
+     if (remainingOps.length === 0) {
+       updateSyncStatus('online', "Synchronisé");
+     } else {
+       updateSyncStatus('offline', `${remainingOps.length} changements en attente`);
+     }
+   } catch (error) {
+     console.error("Erreur lors du traitement des opérations en attente:", error);
+     updateSyncStatus('offline', "Échec de synchronisation");
+   }
+ }
+
  // Configuration de la synchronisation périodique
  function setupPeriodicSync() {
-   // Synchroniser les données toutes les X minutes
+   // Synchroniser les données toutes les 5 minutes (300000 ms)
    setInterval(() => {
-     if (appData.currentUser) {
+     if (appData.currentUser && appData.isOnline) {
        console.log("Synchronisation périodique...");
-       syncAllDataToServer();
+       processPendingOperations();
      }
-   }, sheetsConfig.syncInterval);
+   }, 300000); // 5 minutes
    
    // Synchroniser avant que l'utilisateur ne quitte la page
    window.addEventListener('beforeunload', () => {
-     if (appData.currentUser && !sheetsConfig.syncing) {
+     if (appData.currentUser) {
        saveToLocalStorage();
      }
    });
@@ -1000,7 +1101,18 @@
        exceptional: 5,
        recovery: 10
      };
+     
+     // Enregistrer localement
      saveToLocalStorage();
+     
+     // Ajouter à la file d'attente de synchronisation
+     queueOperation({
+       type: 'updateLeaveBalance',
+       data: {
+         userId: userId,
+         balance: appData.leaveBalances[userId]
+       }
+     });
    }
  }
 
@@ -1186,8 +1298,11 @@
      appData.requests.push(newRequest);
      saveToLocalStorage();
      
-     // Synchronisation après ajout d'une demande
-     syncAllDataToServer();
+     // Ajouter à la file d'attente de synchronisation
+     queueOperation({
+       type: 'addRequest',
+       data: newRequest
+     });
      
      form.reset();
      daysInput.value = '';
@@ -1253,8 +1368,11 @@
      appData.requests.push(newRequest);
      saveToLocalStorage();
      
-     // Synchronisation après ajout d'une demande
-     syncAllDataToServer();
+     // Ajouter à la file d'attente de synchronisation
+     queueOperation({
+       type: 'addRequest',
+       data: newRequest
+     });
      
      form.reset();
      otherReasonContainer.classList.add('hidden');
@@ -1296,8 +1414,11 @@
      appData.requests.push(newRequest);
      saveToLocalStorage();
      
-     // Synchronisation après ajout d'une demande
-     syncAllDataToServer();
+     // Ajouter à la file d'attente de synchronisation
+     queueOperation({
+       type: 'addRequest',
+       data: newRequest
+     });
      
      form.reset();
      updateEmployeeRequestsTable();
@@ -1467,11 +1588,24 @@
      if (appData.currentUser && appData.currentUser.id === userId && appData.currentUser.role === "Employé") {
        updateLeaveBalanceDisplay();
      }
+     
+     // Ajouter à la file d'attente de synchronisation pour les soldes de congés
+     queueOperation({
+       type: 'updateLeaveBalance',
+       data: {
+         userId: userId,
+         balance: leaveBalance
+       }
+     });
    }
 
-   saveToLocalStorage();
-   syncAllDataToServer();
+   // Ajouter à la file d'attente de synchronisation pour la demande
+   queueOperation({
+     type: 'updateRequest',
+     data: request
+   });
    
+   await saveToLocalStorage();
    updateManagerRequestsTables();
    updateEmployeeRequestsTable();
    showNotification(`La demande de ${getUserById(request.employeeId).name} a été approuvée.`, "success");
@@ -1513,9 +1647,13 @@
    request.status = "Refusée";
    request.comment = comment;
    
-   saveToLocalStorage();
-   syncAllDataToServer();
+   // Ajouter à la file d'attente de synchronisation
+   queueOperation({
+     type: 'updateRequest',
+     data: request
+   });
    
+   await saveToLocalStorage();
    updateManagerRequestsTables();
    updateEmployeeRequestsTable();
    showNotification(`La demande de ${getUserById(request.employeeId).name} a été refusée.`, "success");
@@ -1554,24 +1692,31 @@
  }
 
  // Connexion d'un utilisateur
- function login(user) {
+ async function login(user) {
    appData.currentUser = user;
    initializeLeaveBalances(user.id);
    document.querySelector('.user-name').textContent = user.name;
    document.querySelector('.user-role').textContent = user.role;
    document.getElementById('logout-button').classList.remove('hidden');
    showView(user.role === "Employé" ? 'employee-view' : 'manager-view');
+   
+   // Enregistrer l'utilisateur connecté dans le stockage local
+   await localDB.saveCurrentUser(user);
+   
    showNotification(`Bienvenue, ${user.name} !`, "success");
    
    // Tentative de synchronisation au login
-   fetchDataFromServer().catch(() => {
-     console.log("Impossible de récupérer les données du serveur, utilisation des données locales");
-   });
+   if (appData.isOnline) {
+     fetchAllDataFromFirebase().catch(() => {
+       console.log("Impossible de récupérer les données du serveur, utilisation des données locales");
+     });
+   }
  }
 
  // Déconnexion de l'utilisateur
- function logout() {
+ async function logout() {
    appData.currentUser = null;
+   await localDB.saveCurrentUser(null);
    document.querySelector('.user-name').textContent = "Non connecté";
    document.querySelector('.user-role').textContent = "";
    document.getElementById('logout-button').classList.add('hidden');
@@ -1639,15 +1784,20 @@
          }
 
          appData.users = [...appData.users, ...newUsers];
-         newUsers.forEach(user => {
+         
+         // Ajouter les nouveaux utilisateurs à la file d'attente de synchronisation
+         for (const user of newUsers) {
+           queueOperation({
+             type: 'addUser',
+             data: user
+           });
+           
            if (user.role === "Employé") {
              initializeLeaveBalances(user.id);
            }
-         });
+         }
          
-         saveToLocalStorage();
-         syncAllDataToServer();
-         
+         await saveToLocalStorage();
          fileInput.value = '';
          updateUsersTable();
          showNotification(`${newUsers.length} utilisateur(s) importé(s) avec succès.`, "success");
@@ -1712,6 +1862,16 @@
              exceptional: parseInt(row.exceptional_leave) || 0,
              recovery: parseInt(row.recovery_leave) || 0
            };
+           
+           // Ajouter à la file d'attente de synchronisation
+           queueOperation({
+             type: 'updateLeaveBalance',
+             data: {
+               userId: userId,
+               balance: appData.leaveBalances[userId]
+             }
+           });
+           
            updatedCount++;
          });
 
@@ -1721,8 +1881,6 @@
          }
 
          saveToLocalStorage();
-         syncAllDataToServer();
-         
          fileInput.value = '';
          updateLeaveBalanceDisplay();
          showNotification(`${updatedCount} solde(s) de congé mis à jour avec succès.`, "success");
@@ -1838,10 +1996,14 @@
      if (role === "Employé") {
        initializeLeaveBalances(id);
      }
-
-     saveToLocalStorage();
-     syncAllDataToServer();
      
+     // Ajouter à la file d'attente de synchronisation
+     queueOperation({
+       type: 'addUser',
+       data: newUser
+     });
+
+     await saveToLocalStorage();
      updateUsersTable();
      closeModal();
      showNotification(`L'utilisateur ${name} a été ajouté avec succès.`, "success");
@@ -1936,6 +2098,12 @@
        user.password = await hashPassword(newPassword);
      }
 
+     // Ajouter à la file d'attente de synchronisation
+     queueOperation({
+       type: 'updateUser',
+       data: user
+     });
+
      // Gérer les changements de rôle
      if (oldRole !== newRole) {
        if (newRole === "Employé") {
@@ -1952,9 +2120,7 @@
        }
      }
 
-     saveToLocalStorage();
-     syncAllDataToServer();
-     
+     await saveToLocalStorage();
      updateUsersTable();
      closeModal();
      showNotification(`L'utilisateur ${newName} a été modifié avec succès.`, "success");
@@ -2006,6 +2172,7 @@
    appData.users = appData.users.filter(u => u.id !== userId);
    
    // Supprimer ses demandes
+   const userRequests = appData.requests.filter(req => req.employeeId === userId);
    appData.requests = appData.requests.filter(req => req.employeeId !== userId);
    
    // Supprimer ses soldes de congés
@@ -2013,9 +2180,27 @@
      delete appData.leaveBalances[userId];
    }
    
-   saveToLocalStorage();
-   syncAllDataToServer();
+   // Ajouter toutes les opérations de suppression à la file d'attente
+   queueOperation({
+     type: 'deleteUser',
+     data: { id: userId }
+   });
    
+   // Supprimer chaque demande de l'utilisateur
+   for (const req of userRequests) {
+     queueOperation({
+       type: 'deleteRequest',
+       data: { id: req.id }
+     });
+   }
+   
+   // Supprimer les soldes de congés
+   queueOperation({
+     type: 'deleteLeaveBalance',
+     data: { userId: userId }
+   });
+   
+   await saveToLocalStorage();
    updateUsersTable();
    updateManagerRequestsTables();
    closeModal();
@@ -2070,9 +2255,14 @@
    try {
      showLoading("Réinitialisation des données", "Veuillez patienter pendant que les données sont réinitialisées...");
      
+     // Récupérer les IDs des données à supprimer
+     const usersToDelete = appData.users.filter(user => user.id !== 76 && user.id !== 1);
+     const requestsToDelete = [...appData.requests];
+     const balancesToDelete = {...appData.leaveBalances};
+     
      // Créer les utilisateurs par défaut
      const defaultUsers = [
-       { id: 76, name: "ALILI HOUSSEM", email: "ALILIHOUSSEM@EASYWAYELECTO.COM", role: "Responsable", password: await hashPassword("1234") },
+       { id: 76, name: "ALILI HOUSSEM", email: "alilihoussem@easywayelecto.com", role: "Responsable", password: await hashPassword("1234") },
        { id: 1, name: "John Doe", email: "john.doe@example.com", role: "Employé", password: await hashPassword("1234") }
      ];
      
@@ -2087,8 +2277,53 @@
        }
      });
      
-     saveToLocalStorage();
-     syncAllDataToServer();
+     // Ajouter les opérations de suppression à la file d'attente
+     for (const user of usersToDelete) {
+       queueOperation({
+         type: 'deleteUser',
+         data: { id: user.id }
+       });
+     }
+     
+     for (const request of requestsToDelete) {
+       queueOperation({
+         type: 'deleteRequest',
+         data: { id: request.id }
+       });
+     }
+     
+     for (const userId in balancesToDelete) {
+       if (userId !== '1') { // Ne pas supprimer les soldes de l'utilisateur par défaut
+         queueOperation({
+           type: 'deleteLeaveBalance',
+           data: { userId: parseInt(userId) }
+         });
+       }
+     }
+     
+     // Ajouter ou mettre à jour les utilisateurs par défaut
+     for (const user of defaultUsers) {
+       queueOperation({
+         type: 'updateUser',
+         data: user
+       });
+     }
+     
+     // Mettre à jour les soldes de l'utilisateur par défaut
+     queueOperation({
+       type: 'updateLeaveBalance',
+       data: {
+         userId: 1,
+         balance: appData.leaveBalances[1]
+       }
+     });
+     
+     await saveToLocalStorage();
+     
+     // Synchroniser si en ligne
+     if (appData.isOnline) {
+       await processPendingOperations();
+     }
      
      // Mettre à jour l'interface si l'utilisateur est connecté
      if (appData.currentUser) {
@@ -2104,7 +2339,7 @@
          }
        } else {
          // L'utilisateur n'existe plus après réinitialisation
-         logout();
+         await logout();
        }
      }
      
@@ -2127,7 +2362,7 @@
  // Configuration du bouton de synchronisation
  function setupSyncDataBtn() {
    document.getElementById('sync-data-btn').addEventListener('click', function() {
-     syncAllDataToServer(true);
+     syncAllDataWithFirebase(true);
    });
  }
 
@@ -2221,6 +2456,12 @@
      // Afficher l'écran de chargement initial
      showLoading("Initialisation de l'application", "Chargement des données...");
      
+     // Initialiser le stockage local
+     await localDB.initializeStorage();
+     
+     // Configurer les écouteurs d'état de connexion réseau
+     setupNetworkListeners();
+     
      // Chargement des données locales en premier pour l'affichage rapide
      await loadFromLocalStorage();
      
@@ -2239,8 +2480,18 @@
      // Initialisation des champs de date avec la date du jour
      initDateFields();
      
-     // Affichage de la vue de connexion
-     showView('login-view');
+     // Si un utilisateur était déjà connecté, reconnecter automatiquement
+     const savedUser = await localDB.getCurrentUser();
+     if (savedUser) {
+       appData.currentUser = savedUser;
+       document.querySelector('.user-name').textContent = savedUser.name;
+       document.querySelector('.user-role').textContent = savedUser.role;
+       document.getElementById('logout-button').classList.remove('hidden');
+       showView(savedUser.role === "Employé" ? 'employee-view' : 'manager-view');
+     } else {
+       // Affichage de la vue de connexion
+       showView('login-view');
+     }
      
      // Masquer l'écran de chargement
      hideLoading();
@@ -2248,10 +2499,14 @@
      // Mise en place de la synchronisation périodique
      setupPeriodicSync();
      
-     // Tenter de récupérer les données depuis le serveur en arrière-plan
-     fetchDataFromServer().catch(error => {
-       console.log("Mode hors ligne activé", error);
-     });
+     // Tenter de récupérer les données depuis Firebase en arrière-plan
+     if (appData.isOnline) {
+       fetchAllDataFromFirebase().catch(error => {
+         console.log("Mode hors ligne activé", error);
+       });
+     } else {
+       updateSyncStatus('offline', "Hors ligne");
+     }
      
      console.log("Application initialisée avec succès");
    } catch (error) {
