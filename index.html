@@ -1,270 +1,3 @@
-
-Can you help me debug my code? I'll share the code snippet with you.
-
-I'd be happy to help you debug your code! Please share the code snippet you're working with, and let me know what issues you're encountering or what you're trying to achieve. We'll figure it out together.
-Refer to the following content:
-pasted-text.txt
-
-Thank you for sharing your code snippet! It’s a well-structured HTML document with embedded JavaScript for a leave, salary advance, and exit authorization management system using Firebase, Tailwind CSS, and localForage for offline storage. Since you’ve asked for debugging help, I’ll need you to specify what issues you’re encountering—such as errors in the console, unexpected behavior, or specific features not working as intended. For now, I’ll analyze the code for potential issues and provide some initial observations and suggestions.
-Initial Observations
-
-    Missing Functions: Some functions referenced in the code (e.g., showModal, closeModal, showNotification, getStatusIcon, getUserById) are not defined in the provided snippet. I assume they might be defined elsewhere or were truncated. If these are missing, they’ll cause runtime errors like ReferenceError: functionName is not defined.
-    Firebase Initialization: The Firebase configuration is present, and you’re using the compatibility mode (firebase-app-compat, etc.). This works, but note that Firebase v9+ recommends the modular syntax for better tree-shaking. If this is an older project, it’s fine, but upgrading could optimize performance.
-    Truncated Code: The getStatusClass function appears truncated (switch(status) { case "En attente": retur...). This will cause a syntax error. Ensure the full implementation is included.
-    Event Listeners: You’re adding event listeners dynamically (e.g., for .approve-btn and .reject-btn in updateManagerRequestsTables). If these are re-added without cleanup, you might end up with duplicate listeners, leading to multiple executions of the same action.
-    Date Handling: The calculateDaysBetweenDates function includes the end date in the count (+1), which might not align with all leave policies (some count exclusive of the end date). This isn’t an error but depends on your requirements.
-    Offline Sync: The offline synchronization with localForage and pending operations queue is robust, but there’s no explicit error handling for cases where localForage fails (e.g., quota exceeded).
-
-Potential Issues to Check
-
-    Console Errors: Open your browser’s developer tools (F12) and check the console for errors like Uncaught ReferenceError or TypeError. These will pinpoint undefined variables or functions.
-    Firebase Connectivity: Test with a bad network (e.g., toggle offline mode in browser dev tools) to ensure the app handles offline states gracefully.
-    Form Submissions: Submit each form (leave, leave request, advance) and verify the data appears in the respective tables and is saved to appData.
-    Dynamic Updates: After approving/rejecting a request or editing a user, ensure the UI updates correctly without manual refresh.
-
-Debugging Steps
-
-Since I don’t know the exact issue yet, here’s how we can proceed:
-
-    Specify the Problem: Tell me what’s not working—e.g., “The leave form doesn’t submit,” “I get an error when logging in,” or “The sync badge doesn’t update.”
-    Test Specific Sections: I’ll guide you to isolate the issue. For example:
-        For login issues, test setupLoginForm and the login function.
-        For form submissions, check the event listeners like setupLeaveForm.
-    Add Logging: Insert console.log statements to trace execution. For example, in login:
-    javascript
-
-    async function login(user) {
-      console.log("Logging in user:", user);
-      appData.currentUser = user;
-      // ... rest of the function
-    }
-
-Example Fix for a Common Issue
-
-If showNotification is undefined (a likely candidate since it’s called often but not defined here), you’d see errors whenever it’s invoked. Here’s a basic implementation you can add:
-javascript
-function showNotification(message, type) {
-  const container = document.getElementById('notification-container');
-  const notification = document.createElement('div');
-  notification.className = `notification fixed top-4 right-4 z-50 px-4 py-2 rounded-md shadow-lg text-white ${
-    type === 'error' ? 'bg-red-500' : type === 'success' ? 'bg-green-500' : 'bg-blue-500'
-  }`;
-  notification.textContent = message;
-  container.appendChild(notification);
-  setTimeout(() => notification.remove(), 3000);
-}
-Next Steps
-
-Please let me know:
-
-    What specific issue you’re facing (error messages, unexpected behavior, etc.).
-    What you’ve already tried to fix it.
-    Which part of the app you want to focus on (e.g., login, forms, sync).
-
-With that info, I can provide a targeted solution or walk you through debugging step-by-step!
-voici l'api firebase que j'ai : 
-  apiKey: "AIzaSyAk3qhQnJEqi2e5BQrydTFhPqoohHfVbzY",
-
-  authDomain: "gestion-conges-app.firebaseapp.com",
-
-  databaseURL: "https://gestion-conges-app-default-rtdb.firebaseio.com",
-
-  projectId: "gestion-conges-app",
-
-  storageBucket: "gestion-conges-app.firebasestorage.app",
-
-  messagingSenderId: "287763855046",
-
-  appId: "1:287763855046:web:e70201a570dda13f7589c7"
-
-mais quand je le met dans le code html , le code html ne peut pas importer les donnée depuis firebase
-
-Merci d'avoir partagé votre configuration Firebase ! Si votre code HTML ne parvient pas à importer les données depuis Firebase, cela peut être dû à plusieurs raisons : problèmes de configuration, erreurs dans le code de récupération des données, restrictions de sécurité dans Firebase, ou encore des erreurs réseau. Je vais analyser votre situation étape par étape pour identifier et résoudre le problème.
-Vérification Initiale
-
-Votre configuration Firebase semble correcte et correspond à celle utilisée dans le code que vous avez fourni :
-javascript
-const firebaseConfig = {
-  apiKey: "AIzaSyAk3qhQnJEqi2e5BQrydTFhPqoohHfVbzY",
-  authDomain: "gestion-conges-app.firebaseapp.com",
-  databaseURL: "https://gestion-conges-app-default-rtdb.firebaseio.com",
-  projectId: "gestion-conges-app",
-  storageBucket: "gestion-conges-app.firebasestorage.app",
-  messagingSenderId: "287763855046",
-  appId: "1:287763855046:web:e70201a570dda13f7589c7"
-};
-
-Cependant, il y a quelques points à vérifier, car votre code utilise Firestore (firebase.firestore()), mais la databaseURL dans votre configuration pointe vers la Realtime Database. Cela peut causer une confusion ou un dysfonctionnement si vous essayez d'utiliser Firestore avec une configuration qui semble mélanger les deux bases de données Firebase.
-Problèmes Potentiels et Solutions
-1. Incohérence entre Realtime Database et Firestore
-
-    Problème : Votre configuration inclut une databaseURL, qui est spécifique à la Realtime Database, mais le code utilise firebase.firestore() pour accéder à Firestore. Ces deux services sont distincts dans Firebase, et Firestore ne nécessite pas de databaseURL.
-    Solution : Si vous voulez utiliser Firestore (comme le suggère votre code avec db.collection()), supprimez la databaseURL de la configuration, car elle n’est pas nécessaire pour Firestore. Voici la configuration corrigée :
-
-javascript
-const firebaseConfig = {
-  apiKey: "AIzaSyAk3qhQnJEqi2e5BQrydTFhPqoohHfVbzY",
-  authDomain: "gestion-conges-app.firebaseapp.com",
-  projectId: "gestion-conges-app",
-  storageBucket: "gestion-conges-app.firebasestorage.app",
-  messagingSenderId: "287763855046",
-  appId: "1:287763855046:web:e70201a570dda13f7589c7"
-};
-
-Si vous aviez l’intention d’utiliser la Realtime Database à la place, il faudrait remplacer toutes les références à firestore() par database() et ajuster les appels (par exemple, db.ref() au lieu de db.collection()).
-2. Règles de Sécurité Firebase
-
-    Problème : Si les règles de sécurité de Firestore ne permettent pas la lecture publique ou par des utilisateurs non authentifiés, vos requêtes échoueront avec une erreur comme PERMISSION_DENIED.
-    Vérification : Connectez-vous à la console Firebase (https://console.firebase.google.com/), allez dans votre projet gestion-conges-app, puis dans Firestore Database > Règles. Vérifiez les règles actuelles. Par défaut, elles pourraient ressembler à ceci :
-
-json
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false;
-    }
-  }
-}
-
-Cela bloque toutes les lectures et écritures.
-
-    Solution : Pour tester, vous pouvez temporairement assouplir les règles pour permettre la lecture (et l’écriture si nécessaire) sans authentification :
-
-json
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{document=**} {
-      allow read: if true;
-      allow write: if true; // Optionnel, selon vos besoins
-    }
-  }
-}
-
-Attention : Ces règles ouvertes sont uniquement pour le dépannage ou le développement. En production, vous devriez sécuriser l’accès avec des règles basées sur l’authentification (par exemple, request.auth != null).
-3. Erreurs dans la Console
-
-    Problème : Si les données ne sont pas importées, il y a probablement une erreur dans la console du navigateur qui bloque l’exécution.
-    Solution : Ouvre les outils de développement de votre navigateur (F12 ou clic droit > Inspecter), va dans l’onglet Console, et recharge la page. Cherche des messages comme :
-        Failed to get document because the client is offline (problème réseau).
-        Permission denied (problème de règles).
-        firebase.firestore is not a function (problème de chargement du SDK).
-
-Si tu vois une erreur, partage-la avec moi pour que je puisse t’aider à la résoudre précisément.
-4. Chargement des Scripts Firebase
-
-    Problème : Votre HTML charge les SDK Firebase en mode compatibilité :
-
-html
-<script src="https://www.gstatic.com/firebasejs/11.5.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/11.5.0/firebase-auth-compat.js"></script>
-
-Si ces scripts ne se chargent pas correctement (par exemple, à cause d’une connexion réseau ou d’un bloqueur de publicités), Firebase ne sera pas initialisé.
-
-    Solution :
-        Vérifie que tu as une connexion Internet active.
-        Ajoute une vérification dans ton code pour t’assurer que Firebase est bien chargé :
-
-javascript
-if (typeof firebase === 'undefined') {
-  console.error("Firebase SDK n'est pas chargé correctement.");
-  showNotification("Erreur : Impossible de charger Firebase.", "error");
-} else {
-  const app = firebase.initializeApp(firebaseConfig);
-  const auth = firebase.auth();
-  const db = firebase.firestore();
-  console.log("Firebase initialisé avec succès");
-}
-5. Fonction de Récupération des Données
-
-    Problème : La fonction fetchAllDataFromFirebase est censée récupérer les données, mais elle pourrait ne pas fonctionner correctement si les collections Firestore (users, requests, leaveBalances) sont vides ou mal configurées.
-    Solution : Testons cette fonction isolément. Ajoute des logs pour voir ce qui se passe :
-
-javascript
-async function fetchAllDataFromFirebase() {
-  if (!appData.isOnline) {
-    showNotification("Vous êtes hors ligne. Utilisation des données locales.", "error");
-    return false;
-  }
-
-  showLoading("Récupération des données", "Veuillez patienter...");
-  updateSyncStatus('syncing', "Récupération des données...");
-
-  try {
-    const [users, requests, leaveBalances] = await Promise.all([
-      fetchUsersFromFirebase(),
-      fetchRequestsFromFirebase(),
-      fetchLeaveBalancesFromFirebase()
-    ]);
-
-    console.log("Utilisateurs récupérés :", users);
-    console.log("Demandes récupérées :", requests);
-    console.log("Soldes récupérés :", leaveBalances);
-
-    if (users && users.length > 0) appData.users = users;
-    if (requests && requests.length > 0) appData.requests = requests;
-    if (leaveBalances && Object.keys(leaveBalances).length > 0) appData.leaveBalances = leaveBalances;
-
-    appData.lastSync = new Date().toISOString();
-    await saveToLocalStorage();
-
-    updateSyncStatus('online', "Données récupérées");
-    hideLoading();
-    return true;
-  } catch (error) {
-    console.error("Erreur lors de la récupération des données :", error);
-    updateSyncStatus('offline', "Échec de connexion");
-    hideLoading();
-    showNotification("Impossible de se connecter au serveur.", "error");
-    return false;
-  }
-}
-
-    Recharge la page et regarde la console pour voir ce qui est retourné par console.log.
-
-6. Données Existantes dans Firestore
-
-    Problème : Si les collections Firestore (users, requests, leaveBalances) n’existent pas ou sont vides, les appels à get() retourneront des tableaux vides, et rien ne sera importé.
-    Solution : Va dans la console Firebase > Firestore Database, et vérifie que ces collections existent et contiennent des données. Sinon, ajoute manuellement quelques documents pour tester (par exemple, un utilisateur dans users avec les champs id, name, email, role, password).
-
-Étapes de Dépannage
-
-    Corrige la Configuration : Supprime databaseURL si tu utilises Firestore.
-    Vérifie les Règles : Assure-toi que les règles Firestore permettent la lecture.
-    Ajoute des Logs : Modifie fetchAllDataFromFirebase comme ci-dessus et regarde la console.
-    Teste en Local : Charge ton HTML dans un navigateur et vois si le badge de synchronisation passe à « Synchronisé » ou reste sur « Hors ligne ».
-    Ajoute des Données : Si Firestore est vide, ajoute des données manuellement via la console Firebase.
-
-Test Rapide
-
-Ajoute ce code temporaire après l’initialisation de Firebase pour tester la connexion :
-javascript
-db.collection('test').doc('ping').set({ timestamp: new Date().toISOString() })
-  .then(() => console.log("Test réussi : écriture dans Firestore OK"))
-  .catch(error => console.error("Test échoué :", error));
-
-Si tu vois « Test réussi » dans la console, Firebase fonctionne. Sinon, l’erreur t’indiquera le problème (par exemple, permissions ou réseau).
-Questions pour Avancer
-
-    Peux-tu vérifier la console et me dire s’il y a des erreurs spécifiques ?
-    As-tu des données dans Firestore ? Si oui, dans quelles collections ?
-    Le badge de synchronisation affiche-t-il « Hors ligne » ou autre chose ?
-
-Avec ces informations, je pourrai te donner une solution plus précise !
-regenerer tout le code avec les mise à jours
-
-Voici une version mise à jour de votre code, intégrant les corrections et améliorations discutées pour résoudre le problème d'importation des données depuis Firebase Firestore. J’ai :
-
-    Corrigé la configuration Firebase : Supprimé la databaseURL qui était spécifique à Realtime Database, car vous utilisez Firestore.
-    Ajouté des fonctions manquantes : Implémenté showNotification, showModal, closeModal, getStatusIcon, et getUserById, qui semblaient absentes ou tronquées.
-    Complété les fonctions tronquées : Notamment getStatusClass.
-    Ajouté des logs de débogage : Pour faciliter la vérification de la récupération des données.
-    Assuré la compatibilité avec Firestore : Vérifié que les appels à Firestore sont cohérents.
-
-Voici le code complet mis à jour :
-html
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -275,9 +8,9 @@ html
  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
  <!-- Firebase App (la base) est toujours requise et doit être chargée en premier -->
- <script src="https://www.gstatic.com/firebasejs/11.5.0/firebase-app-compat.js"></script>
- <script src="https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore-compat.js"></script>
- <script src="https://www.gstatic.com/firebasejs/11.5.0/firebase-auth-compat.js"></script>
+ <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+ <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+ <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
  <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
  <script>
  tailwind.config = {
@@ -757,28 +490,20 @@ html
  </div>
 
  <script>
- // Configuration Firebase mise à jour pour Firestore
+ // Configuration de Firebase avec notre application spécifique
  const firebaseConfig = {
-   apiKey: "AIzaSyAk3qhQnJEqi2e5BQrydTFhPqoohHfVbzY",
-   authDomain: "gestion-conges-app.firebaseapp.com",
-   projectId: "gestion-conges-app",
-   storageBucket: "gestion-conges-app.firebasestorage.app",
-   messagingSenderId: "287763855046",
-   appId: "1:287763855046:web:e70201a570dda13f7589c7"
+   apiKey: "AIzaSyDCxdZ_r8BQwG9zpkm-KM1JPi2-qe7ujL8",
+   authDomain: "gestion-des-employes-9ee74.firebaseapp.com",
+   projectId: "gestion-des-employes-9ee74",
+   storageBucket: "gestion-des-employes-9ee74.firebasestorage.app",
+   messagingSenderId: "344902912260",
+   appId: "1:344902912260:web:d136be6869ae30a9ba2851"
  };
 
- // Vérification du chargement de Firebase
- if (typeof firebase === 'undefined') {
-   console.error("Firebase SDK n'est pas chargé.");
-   alert("Erreur : Impossible de charger Firebase. Vérifiez votre connexion ou les scripts.");
- } else {
-   // Initialiser Firebase
-   const app = firebase.initializeApp(firebaseConfig);
-   const auth = firebase.auth();
-   const db = firebase.firestore();
-   console.log("Firebase initialisé avec succès");
- }
-
+ // Initialiser Firebase
+ firebase.initializeApp(firebaseConfig);
+ const db = firebase.firestore();
+ 
  // Structure des données de l'application
  const appData = {
    users: [],
@@ -786,36 +511,98 @@ html
    leaveBalances: {},
    currentUser: null,
    lastSync: null,
-   pendingChanges: [],
+   pendingChanges: [], // Suivi des modifications en attente de synchronisation
    isOnline: navigator.onLine
  };
 
- // Configuration du stockage local avec localForage
+ // Configuration du stockage local - utilise localForage pour un stockage persistant
  const localDB = {
    async initializeStorage() {
-     this.users = localforage.createInstance({ name: 'congés-app', storeName: 'users' });
-     this.requests = localforage.createInstance({ name: 'congés-app', storeName: 'requests' });
-     this.leaveBalances = localforage.createInstance({ name: 'congés-app', storeName: 'leaveBalances' });
-     this.metadata = localforage.createInstance({ name: 'congés-app', storeName: 'metadata' });
-     this.pendingQueue = localforage.createInstance({ name: 'congés-app', storeName: 'pendingQueue' });
+     // Configurer localForage pour chaque type de données
+     this.users = localforage.createInstance({
+       name: 'congés-app',
+       storeName: 'users'
+     });
+     
+     this.requests = localforage.createInstance({
+       name: 'congés-app',
+       storeName: 'requests'
+     });
+     
+     this.leaveBalances = localforage.createInstance({
+       name: 'congés-app',
+       storeName: 'leaveBalances'
+     });
+     
+     this.metadata = localforage.createInstance({
+       name: 'congés-app',
+       storeName: 'metadata'
+     });
+     
+     // Initialiser la file d'attente des opérations
+     this.pendingQueue = localforage.createInstance({
+       name: 'congés-app',
+       storeName: 'pendingQueue'
+     });
    },
-   async saveUsers(users) { await this.users.setItem('allUsers', users); },
-   async getUsers() { return await this.users.getItem('allUsers') || []; },
-   async saveRequests(requests) { await this.requests.setItem('allRequests', requests); },
-   async getRequests() { return await this.requests.getItem('allRequests') || []; },
-   async saveLeaveBalances(balances) { await this.leaveBalances.setItem('allBalances', balances); },
-   async getLeaveBalances() { return await this.leaveBalances.getItem('allBalances') || {}; },
-   async saveLastSync(timestamp) { await this.metadata.setItem('lastSync', timestamp); },
-   async getLastSync() { return await this.metadata.getItem('lastSync'); },
-   async saveCurrentUser(user) { await this.metadata.setItem('currentUser', user); },
-   async getCurrentUser() { return await this.metadata.getItem('currentUser'); },
+   
+   async saveUsers(users) {
+     await this.users.setItem('allUsers', users);
+   },
+   
+   async getUsers() {
+     return await this.users.getItem('allUsers') || [];
+   },
+   
+   async saveRequests(requests) {
+     await this.requests.setItem('allRequests', requests);
+   },
+   
+   async getRequests() {
+     return await this.requests.getItem('allRequests') || [];
+   },
+   
+   async saveLeaveBalances(balances) {
+     await this.leaveBalances.setItem('allBalances', balances);
+   },
+   
+   async getLeaveBalances() {
+     return await this.leaveBalances.getItem('allBalances') || {};
+   },
+   
+   async saveLastSync(timestamp) {
+     await this.metadata.setItem('lastSync', timestamp);
+   },
+   
+   async getLastSync() {
+     return await this.metadata.getItem('lastSync');
+   },
+   
+   async saveCurrentUser(user) {
+     await this.metadata.setItem('currentUser', user);
+   },
+   
+   async getCurrentUser() {
+     return await this.metadata.getItem('currentUser');
+   },
+   
    async addPendingOperation(operation) {
      const queue = await this.pendingQueue.getItem('operations') || [];
-     queue.push({ ...operation, timestamp: new Date().toISOString() });
+     queue.push({
+       ...operation,
+       timestamp: new Date().toISOString()
+     });
      await this.pendingQueue.setItem('operations', queue);
    },
-   async getPendingOperations() { return await this.pendingQueue.getItem('operations') || []; },
-   async clearPendingOperations() { await this.pendingQueue.setItem('operations', []); },
+   
+   async getPendingOperations() {
+     return await this.pendingQueue.getItem('operations') || [];
+   },
+   
+   async clearPendingOperations() {
+     await this.pendingQueue.setItem('operations', []);
+   },
+   
    async removePendingOperation(index) {
      const queue = await this.pendingQueue.getItem('operations') || [];
      if (index >= 0 && index < queue.length) {
@@ -842,7 +629,9 @@ html
  function updateSyncStatus(status, message) {
    const badge = document.getElementById('sync-status');
    const text = document.getElementById('sync-text');
+   
    badge.className = "sync-badge";
+   
    switch(status) {
      case 'online':
        badge.classList.add('online');
@@ -866,41 +655,7 @@ html
    }
  }
 
- // Afficher une notification
- function showNotification(message, type) {
-   const container = document.getElementById('notification-container');
-   const notification = document.createElement('div');
-   notification.className = `notification px-4 py-2 rounded-md shadow-lg text-white ${
-     type === 'error' ? 'bg-red-500' : type === 'success' ? 'bg-green-500' : 'bg-blue-500'
-   }`;
-   notification.textContent = message;
-   container.appendChild(notification);
-   setTimeout(() => notification.remove(), 3000);
- }
-
- // Afficher une modale
- function showModal(title, content, actions) {
-   const modalContainer = document.getElementById('modal-container');
-   const modalContent = document.getElementById('modal-content');
-   modalContent.innerHTML = `
-     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-600">
-       <h3 class="text-lg font-medium text-gray-900 dark:text-white">${title}</h3>
-     </div>
-     <div class="px-6 py-4">${content}</div>
-     <div class="px-6 py-4 bg-gray-50 dark:bg-gray-700 flex justify-end space-x-2">${actions}</div>
-   `;
-   modalContainer.classList.remove('hidden');
-   modalContainer.querySelectorAll('.modal-close').forEach(btn => {
-     btn.addEventListener('click', closeModal);
-   });
- }
-
- // Fermer une modale
- function closeModal() {
-   document.getElementById('modal-container').classList.add('hidden');
- }
-
- // Hacher les mots de passe
+ // Fonction pour hacher les mots de passe
  async function hashPassword(password) {
    const encoder = new TextEncoder();
    const data = encoder.encode(password);
@@ -911,36 +666,63 @@ html
  // Enregistrer les modifications locales
  async function saveToLocalStorage() {
    try {
+     // Enregistrement de toutes les données dans le stockage local
      await localDB.saveUsers(appData.users);
      await localDB.saveRequests(appData.requests);
      await localDB.saveLeaveBalances(appData.leaveBalances);
      await localDB.saveLastSync(appData.lastSync);
-     if (appData.currentUser) await localDB.saveCurrentUser(appData.currentUser);
-     console.log("Données sauvegardées localement");
+     
+     if (appData.currentUser) {
+       await localDB.saveCurrentUser(appData.currentUser);
+     }
+     
+     console.log("Données sauvegardées localement avec succès");
    } catch (error) {
      console.error("Erreur lors de la sauvegarde locale:", error);
-     showNotification("Erreur lors de la sauvegarde locale.", "error");
+     showNotification("Une erreur est survenue lors de la sauvegarde locale des données.", "error");
    }
  }
 
  // Charger les données depuis le stockage local
  async function loadFromLocalStorage() {
    try {
+     // Récupération des données du stockage local
      const users = await localDB.getUsers();
-     if (users.length > 0) appData.users = users;
+     if (users && users.length > 0) {
+       appData.users = users;
+     }
+     
      const requests = await localDB.getRequests();
-     if (requests.length > 0) appData.requests = requests;
+     if (requests && requests.length > 0) {
+       appData.requests = requests;
+     }
+     
      const leaveBalances = await localDB.getLeaveBalances();
-     if (Object.keys(leaveBalances).length > 0) appData.leaveBalances = leaveBalances;
+     if (leaveBalances && Object.keys(leaveBalances).length > 0) {
+       appData.leaveBalances = leaveBalances;
+     }
+     
      const lastSync = await localDB.getLastSync();
-     if (lastSync) appData.lastSync = lastSync;
+     if (lastSync) {
+       appData.lastSync = lastSync;
+     }
+     
      const currentUser = await localDB.getCurrentUser();
-     if (currentUser) appData.currentUser = currentUser;
-     console.log("Données chargées depuis le stockage local");
-     if (appData.users.length === 0) await createDefaultData();
+     if (currentUser) {
+       appData.currentUser = currentUser;
+     }
+     
+     console.log("Données chargées depuis le stockage local avec succès");
+     
+     // Si aucune donnée n'est disponible, créer les données par défaut
+     if (appData.users.length === 0) {
+       console.log("Aucun utilisateur trouvé, création des données par défaut");
+       await createDefaultData();
+     }
+     
      return true;
    } catch (error) {
-     console.error("Erreur lors du chargement local:", error);
+     console.error("Erreur lors du chargement depuis le stockage local:", error);
      return false;
    }
  }
@@ -951,15 +733,22 @@ html
      { id: 76, name: "ALILI HOUSSEM", email: "alilihoussem@easywayelecto.com", role: "Responsable", password: "1234" },
      { id: 1, name: "John Doe", email: "john.doe@example.com", role: "Employé", password: "1234" }
    ];
+   
    appData.users = await Promise.all(defaultUsers.map(async u => ({
      ...u,
      password: await hashPassword(u.password)
    })));
+   
    appData.requests = [];
    appData.leaveBalances = {};
+   
+   // Initialiser les soldes pour les employés
    for (const user of appData.users) {
-     if (user.role === "Employé") initializeLeaveBalances(user.id);
+     if (user.role === "Employé") {
+       initializeLeaveBalances(user.id);
+     }
    }
+   
    await saveToLocalStorage();
  }
 
@@ -968,8 +757,10 @@ html
    window.addEventListener('online', () => {
      appData.isOnline = true;
      updateSyncStatus('online', 'Connexion rétablie');
+     // Tenter de synchroniser les changements en attente
      processPendingOperations();
    });
+   
    window.addEventListener('offline', () => {
      appData.isOnline = false;
      updateSyncStatus('offline', 'Hors ligne');
@@ -980,9 +771,7 @@ html
  async function fetchUsersFromFirebase() {
    try {
      const snapshot = await db.collection('users').get();
-     const users = snapshot.docs.map(doc => doc.data());
-     console.log("Utilisateurs récupérés depuis Firestore:", users);
-     return users;
+     return snapshot.docs.map(doc => doc.data());
    } catch (error) {
      console.error('Erreur lors de la récupération des utilisateurs:', error);
      throw error;
@@ -993,9 +782,7 @@ html
  async function fetchRequestsFromFirebase() {
    try {
      const snapshot = await db.collection('requests').get();
-     const requests = snapshot.docs.map(doc => doc.data());
-     console.log("Demandes récupérées depuis Firestore:", requests);
-     return requests;
+     return snapshot.docs.map(doc => doc.data());
    } catch (error) {
      console.error('Erreur lors de la récupération des demandes:', error);
      throw error;
@@ -1006,6 +793,8 @@ html
  async function fetchLeaveBalancesFromFirebase() {
    try {
      const snapshot = await db.collection('leaveBalances').get();
+     
+     // Convertir les documents en un objet avec les IDs comme clés
      const balances = {};
      snapshot.docs.forEach(doc => {
        const data = doc.data();
@@ -1015,10 +804,10 @@ html
          recovery: data.recovery
        };
      });
-     console.log("Soldes récupérés depuis Firestore:", balances);
+     
      return balances;
    } catch (error) {
-     console.error('Erreur lors de la récupération des soldes:', error);
+     console.error('Erreur lors de la récupération des soldes de congés:', error);
      throw error;
    }
  }
@@ -1026,10 +815,11 @@ html
  // Firebase - Mettre à jour ou ajouter un utilisateur
  async function updateUserInFirebase(user) {
    try {
+     // Utiliser l'ID de l'utilisateur comme identifiant de document
      await db.collection('users').doc(user.id.toString()).set(user);
      return true;
    } catch (error) {
-     console.error(`Erreur mise à jour utilisateur ${user.id}:`, error);
+     console.error(`Erreur lors de la mise à jour de l'utilisateur ${user.id}:`, error);
      throw error;
    }
  }
@@ -1037,10 +827,11 @@ html
  // Firebase - Mettre à jour ou ajouter une demande
  async function updateRequestInFirebase(request) {
    try {
+     // Utiliser l'ID de la demande comme identifiant de document
      await db.collection('requests').doc(request.id.toString()).set(request);
      return true;
    } catch (error) {
-     console.error(`Erreur mise à jour demande ${request.id}:`, error);
+     console.error(`Erreur lors de la mise à jour de la demande ${request.id}:`, error);
      throw error;
    }
  }
@@ -1056,7 +847,7 @@ html
      });
      return true;
    } catch (error) {
-     console.error(`Erreur mise à jour solde utilisateur ${userId}:`, error);
+     console.error(`Erreur lors de la mise à jour du solde de congés pour l'utilisateur ${userId}:`, error);
      throw error;
    }
  }
@@ -1067,7 +858,7 @@ html
      await db.collection('users').doc(userId.toString()).delete();
      return true;
    } catch (error) {
-     console.error(`Erreur suppression utilisateur ${userId}:`, error);
+     console.error(`Erreur lors de la suppression de l'utilisateur ${userId}:`, error);
      throw error;
    }
  }
@@ -1078,7 +869,7 @@ html
      await db.collection('requests').doc(requestId.toString()).delete();
      return true;
    } catch (error) {
-     console.error(`Erreur suppression demande ${requestId}:`, error);
+     console.error(`Erreur lors de la suppression de la demande ${requestId}:`, error);
      throw error;
    }
  }
@@ -1089,7 +880,7 @@ html
      await db.collection('leaveBalances').doc(userId.toString()).delete();
      return true;
    } catch (error) {
-     console.error(`Erreur suppression solde ${userId}:`, error);
+     console.error(`Erreur lors de la suppression du solde de congés pour l'utilisateur ${userId}:`, error);
      throw error;
    }
  }
@@ -1097,29 +888,54 @@ html
  // Synchroniser toutes les données avec Firebase
  async function syncAllDataWithFirebase(forceSync = false) {
    if (!appData.isOnline) {
-     showNotification("Vous êtes hors ligne. Les changements seront synchronisés plus tard.", "error");
+     showNotification("Vous êtes hors ligne. Les changements seront synchronisés automatiquement lors du retour en ligne.", "error");
      return;
    }
+   
    updateSyncStatus('syncing', "Synchronisation en cours...");
+   
    try {
-     if (forceSync) showLoading("Synchronisation", "Mise à jour des données sur le serveur...");
+     if (forceSync) {
+       showLoading("Synchronisation en cours", "Veuillez patienter pendant que vos données sont synchronisées avec le serveur...");
+     }
+     
+     // Traiter d'abord les opérations en attente
      await processPendingOperations();
-     for (const user of appData.users) await updateUserInFirebase(user);
-     for (const request of appData.requests) await updateRequestInFirebase(request);
-     for (const userId in appData.leaveBalances) await updateLeaveBalanceInFirebase(parseInt(userId), appData.leaveBalances[userId]);
+     
+     // Mettre à jour tous les utilisateurs
+     for (const user of appData.users) {
+       await updateUserInFirebase(user);
+     }
+     
+     // Mettre à jour toutes les demandes
+     for (const request of appData.requests) {
+       await updateRequestInFirebase(request);
+     }
+     
+     // Mettre à jour tous les soldes de congés
+     for (const userId in appData.leaveBalances) {
+       await updateLeaveBalanceInFirebase(parseInt(userId), appData.leaveBalances[userId]);
+     }
+     
+     // Mettre à jour le timestamp de la dernière synchronisation
      appData.lastSync = new Date().toISOString();
      await localDB.saveLastSync(appData.lastSync);
+     
      updateSyncStatus('online', "Synchronisé");
+     
      if (forceSync) {
        hideLoading();
-       showNotification("Synchronisation réussie !", "success");
+       showNotification("Les données ont été synchronisées avec succès!", "success");
      }
+     
+     console.log("Synchronisation terminée avec succès");
    } catch (error) {
-     console.error("Erreur synchronisation Firebase:", error);
-     updateSyncStatus('offline', "Échec synchronisation");
+     console.error("Erreur lors de la synchronisation avec Firebase:", error);
+     updateSyncStatus('offline', "Échec de synchronisation");
+     
      if (forceSync) {
        hideLoading();
-       showNotification("Échec synchronisation. Données locales conservées.", "error");
+       showNotification("La synchronisation a échoué. Vos données sont sauvegardées localement.", "error");
      }
    }
  }
@@ -1127,24 +943,44 @@ html
  // Récupérer toutes les données depuis Firebase
  async function fetchAllDataFromFirebase() {
    if (!appData.isOnline) {
-     showNotification("Hors ligne. Utilisation des données locales.", "error");
+     showNotification("Vous êtes hors ligne. Utilisation des données locales.", "error");
+     showImportManualSessionModal();
      return false;
    }
-   showLoading("Récupération des données", "Connexion au serveur...");
-   updateSyncStatus('syncing', "Récupération...");
+   
+   showLoading("Récupération des données", "Veuillez patienter pendant que les données sont récupérées depuis le serveur...");
+   updateSyncStatus('syncing', "Récupération des données...");
+   
    try {
+     // Récupérer les données des trois collections en parallèle
      const [users, requests, leaveBalances] = await Promise.all([
        fetchUsersFromFirebase(),
        fetchRequestsFromFirebase(),
        fetchLeaveBalancesFromFirebase()
      ]);
-     if (users.length > 0) appData.users = users;
-     if (requests.length > 0) appData.requests = requests;
-     if (Object.keys(leaveBalances).length > 0) appData.leaveBalances = leaveBalances;
+     
+     if (users && users.length > 0) {
+       appData.users = users;
+     }
+     
+     if (requests && requests.length > 0) {
+       appData.requests = requests;
+     }
+     
+     if (leaveBalances && Object.keys(leaveBalances).length > 0) {
+       appData.leaveBalances = leaveBalances;
+     }
+     
+     // Mise à jour du timestamp et sauvegarde en local
      appData.lastSync = new Date().toISOString();
      await saveToLocalStorage();
+     
      updateSyncStatus('online', "Données récupérées");
      hideLoading();
+     
+     console.log("Données récupérées avec succès depuis Firebase");
+     
+     // Si l'utilisateur est connecté, mettre à jour les affichages
      if (appData.currentUser) {
        if (appData.currentUser.role === "Employé") {
          updateLeaveBalanceDisplay();
@@ -1154,93 +990,317 @@ html
          updateUsersTable();
        }
      }
+     
      return true;
    } catch (error) {
-     console.error("Erreur récupération Firebase:", error);
-     updateSyncStatus('offline', "Échec connexion");
+     console.error("Erreur lors de la récupération des données depuis Firebase:", error);
+     updateSyncStatus('offline', "Échec de connexion");
      hideLoading();
-     showNotification("Impossible de se connecter au serveur.", "error");
+     showNotification("Impossible de se connecter au serveur. Mode hors ligne activé.", "error");
+     
+     // Afficher la modal d'importation manuelle de données
+     showImportManualSessionModal();
+     
      return false;
    }
  }
 
- // Ajouter une opération à la file d'attente
- async function queueOperation(operation) {
-   await localDB.addPendingOperation(operation);
-   if (appData.isOnline) processPendingOperations();
+ // Affichage de la modal d'importation manuelle des sessions
+ function showImportManualSessionModal() {
+   const modalContent = `
+     <p class="text-gray-700 dark:text-gray-300">
+       La connexion à Firebase a échoué. Vous pouvez importer manuellement vos données via un fichier Excel.
+     </p>
+     <div class="mt-4 space-y-4">
+       <div>
+         <input type="file" id="manual-data-upload" accept=".xlsx, .xls" class="hidden">
+         <label for="manual-data-upload" class="file-input-label text-sm font-medium text-gray-700 dark:text-gray-300">
+           <i class="fas fa-file-excel mr-2"></i> Sélectionner un fichier Excel
+         </label>
+       </div>
+       <p class="text-sm text-gray-500 dark:text-gray-400">
+         Importez un fichier Excel contenant vos données (utilisateurs, demandes, soldes de congés).
+         <br>Assurez-vous que le format du fichier correspond aux données attendues par l'application.
+       </p>
+     </div>
+   `;
+   const modalActions = `
+     <button id="import-manual-data-btn" class="inline-flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+       Importer les données
+     </button>
+     <button class="modal-close inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+       Continuer sans importer
+     </button>
+   `;
+   showModal(`Importation manuelle des données`, modalContent, modalActions);
+   
+   // Ajouter le gestionnaire d'événement pour l'importation
+   document.getElementById('import-manual-data-btn').addEventListener('click', function() {
+     const fileInput = document.getElementById('manual-data-upload');
+     const file = fileInput.files[0];
+     
+     if (!file) {
+       showNotification("Veuillez sélectionner un fichier Excel.", "error");
+       return;
+     }
+     
+     importManualData(file);
+   });
  }
 
- // Traiter les opérations en attente
+ // Fonction pour importer manuellement les données
+ async function importManualData(file) {
+   showLoading("Importation des données", "Veuillez patienter pendant que vos données sont importées...");
+   
+   try {
+     const reader = new FileReader();
+     reader.onload = async function(e) {
+       try {
+         const data = new Uint8Array(e.target.result);
+         const workbook = XLSX.read(data, { type: 'array' });
+         
+         // Traiter chaque feuille si elle existe
+         if (workbook.SheetNames.includes('Utilisateurs')) {
+           const usersSheet = workbook.Sheets['Utilisateurs'];
+           const usersData = XLSX.utils.sheet_to_json(usersSheet);
+           
+           if (usersData.length > 0) {
+             // Convertir les données des utilisateurs et hasher les mots de passe
+             const newUsers = await Promise.all(usersData.map(async row => {
+               // S'assurer que les champs obligatoires sont présents
+               if (!row.ID || !row.Nom || !row.Email || !row.Role || !row.MotDePasse) {
+                 return null;
+               }
+               
+               return {
+                 id: parseInt(row.ID),
+                 name: row.Nom.toString().trim(),
+                 email: row.Email.toString().trim(),
+                 role: row.Role.toString().trim(),
+                 password: await hashPassword(row.MotDePasse.toString().trim())
+               };
+             }));
+             
+             // Filtrer les utilisateurs valides
+             const validUsers = newUsers.filter(user => user !== null);
+             if (validUsers.length > 0) {
+               appData.users = validUsers;
+             }
+           }
+         }
+         
+         // Traiter les soldes de congés
+         if (workbook.SheetNames.includes('SoldesConges')) {
+           const balancesSheet = workbook.Sheets['SoldesConges'];
+           const balancesData = XLSX.utils.sheet_to_json(balancesSheet);
+           
+           if (balancesData.length > 0) {
+             const newBalances = {};
+             balancesData.forEach(row => {
+               if (!row.ID || row.CongesAnnuels === undefined || row.CongesExceptionnels === undefined || row.CongesRecuperation === undefined) {
+                 return;
+               }
+               
+               const userId = parseInt(row.ID);
+               newBalances[userId] = {
+                 annual: parseInt(row.CongesAnnuels) || 0,
+                 exceptional: parseInt(row.CongesExceptionnels) || 0,
+                 recovery: parseInt(row.CongesRecuperation) || 0
+               };
+             });
+             
+             if (Object.keys(newBalances).length > 0) {
+               appData.leaveBalances = newBalances;
+             }
+           }
+         }
+         
+         // Traiter les demandes
+         if (workbook.SheetNames.includes('Demandes')) {
+           const requestsSheet = workbook.Sheets['Demandes'];
+           const requestsData = XLSX.utils.sheet_to_json(requestsSheet);
+           
+           if (requestsData.length > 0) {
+             const newRequests = requestsData.map(row => {
+               if (!row.ID || !row.EmployeID || !row.Type || !row.Date || !row.Details || !row.Statut) {
+                 return null;
+               }
+               
+               return {
+                 id: parseInt(row.ID),
+                 employeeId: parseInt(row.EmployeID),
+                 managerId: row.ManagerID ? parseInt(row.ManagerID) : 76, // Valeur par défaut
+                 type: row.Type.toString().trim(),
+                 date: row.Date,
+                 details: row.Details.toString().trim(),
+                 status: row.Statut.toString().trim(),
+                 createdAt: row.CreeLe || new Date().toISOString(),
+                 comment: row.Commentaire || ""
+               };
+             });
+             
+             // Filtrer les demandes valides
+             const validRequests = newRequests.filter(req => req !== null);
+             if (validRequests.length > 0) {
+               appData.requests = validRequests;
+             }
+           }
+         }
+         
+         // Sauvegarder les données importées
+         await saveToLocalStorage();
+         
+         // Mettre à jour l'interface
+         if (appData.currentUser) {
+           if (appData.currentUser.role === "Employé") {
+             updateLeaveBalanceDisplay();
+             updateEmployeeRequestsTable();
+           } else if (appData.currentUser.role === "Responsable") {
+             updateManagerRequestsTables();
+             updateUsersTable();
+           }
+         }
+         
+         closeModal();
+         hideLoading();
+         showNotification("Les données ont été importées avec succès.", "success");
+       } catch (error) {
+         console.error("Erreur lors de l'importation des données:", error);
+         hideLoading();
+         showNotification("Une erreur est survenue lors de l'importation des données.", "error");
+       }
+     };
+     
+     reader.onerror = function() {
+       hideLoading();
+       showNotification("Erreur lors de la lecture du fichier.", "error");
+     };
+     
+     reader.readAsArrayBuffer(file);
+   } catch (error) {
+     console.error("Erreur lors du traitement du fichier:", error);
+     hideLoading();
+     showNotification("Une erreur est survenue lors du traitement du fichier.", "error");
+   }
+ }
+
+ // Ajouter une opération à la file d'attente de synchronisation
+ async function queueOperation(operation) {
+   await localDB.addPendingOperation(operation);
+   
+   // Si nous sommes en ligne, traiter immédiatement
+   if (appData.isOnline) {
+     processPendingOperations();
+   }
+ }
+
+ // Traiter les opérations en attente de synchronisation
  async function processPendingOperations() {
    if (!appData.isOnline) return;
-   updateSyncStatus('syncing', "Traitement des modifications...");
+   
+   updateSyncStatus('syncing', "Traitement des modifications en attente...");
+   
    try {
      const operations = await localDB.getPendingOperations();
+     
      if (operations.length === 0) {
        updateSyncStatus('online', "Synchronisé");
        return;
      }
+     
      for (let i = 0; i < operations.length; i++) {
        const op = operations[i];
        let success = false;
-       switch (op.type) {
-         case 'addUser':
-         case 'updateUser':
-           success = await updateUserInFirebase(op.data);
-           break;
-         case 'deleteUser':
-           success = await deleteUserFromFirebase(op.data.id);
-           break;
-         case 'addRequest':
-         case 'updateRequest':
-           success = await updateRequestInFirebase(op.data);
-           break;
-         case 'deleteRequest':
-           success = await deleteRequestFromFirebase(op.data.id);
-           break;
-         case 'updateLeaveBalance':
-           success = await updateLeaveBalanceInFirebase(op.data.userId, op.data.balance);
-           break;
-         case 'deleteLeaveBalance':
-           success = await deleteLeaveBalanceFromFirebase(op.data.userId);
-           break;
-       }
-       if (success) {
-         await localDB.removePendingOperation(i);
-         i--;
+       
+       try {
+         switch (op.type) {
+           case 'addUser':
+           case 'updateUser':
+             success = await updateUserInFirebase(op.data);
+             break;
+           case 'deleteUser':
+             success = await deleteUserFromFirebase(op.data.id);
+             break;
+           case 'addRequest':
+           case 'updateRequest':
+             success = await updateRequestInFirebase(op.data);
+             break;
+           case 'deleteRequest':
+             success = await deleteRequestFromFirebase(op.data.id);
+             break;
+           case 'updateLeaveBalance':
+             success = await updateLeaveBalanceInFirebase(op.data.userId, op.data.balance);
+             break;
+           case 'deleteLeaveBalance':
+             success = await deleteLeaveBalanceFromFirebase(op.data.userId);
+             break;
+         }
+         
+         if (success) {
+           await localDB.removePendingOperation(i);
+           i--; // Ajuster l'index après suppression
+         }
+       } catch (opError) {
+         console.error(`Erreur lors du traitement de l'opération #${i}:`, opError);
+         // Continuer avec la prochaine opération
        }
      }
+     
+     // Vérifier s'il reste des opérations non traitées
      const remainingOps = await localDB.getPendingOperations();
-     updateSyncStatus(remainingOps.length === 0 ? 'online' : 'offline', remainingOps.length === 0 ? "Synchronisé" : `${remainingOps.length} changements en attente`);
+     if (remainingOps.length === 0) {
+       updateSyncStatus('online', "Synchronisé");
+     } else {
+       updateSyncStatus('offline', `${remainingOps.length} changements en attente`);
+     }
    } catch (error) {
-     console.error("Erreur traitement opérations:", error);
-     updateSyncStatus('offline', "Échec synchronisation");
+     console.error("Erreur lors du traitement des opérations en attente:", error);
+     updateSyncStatus('offline', "Échec de synchronisation");
    }
  }
 
- // Synchronisation périodique
+ // Configuration de la synchronisation périodique
  function setupPeriodicSync() {
+   // Synchroniser les données toutes les 5 minutes (300000 ms)
    setInterval(() => {
-     if (appData.currentUser && appData.isOnline) processPendingOperations();
+     if (appData.currentUser && appData.isOnline) {
+       console.log("Synchronisation périodique...");
+       processPendingOperations();
+     }
    }, 300000); // 5 minutes
+   
+   // Synchroniser avant que l'utilisateur ne quitte la page
    window.addEventListener('beforeunload', () => {
-     if (appData.currentUser) saveToLocalStorage();
+     if (appData.currentUser) {
+       saveToLocalStorage();
+     }
    });
  }
 
- // Initialiser les soldes de congés
+ // Initialisation des soldes de congés pour un utilisateur
  function initializeLeaveBalances(userId) {
    if (!appData.leaveBalances[userId]) {
-     appData.leaveBalances[userId] = { annual: 20, exceptional: 5, recovery: 10 };
+     appData.leaveBalances[userId] = {
+       annual: 20,
+       exceptional: 5,
+       recovery: 10
+     };
+     
+     // Enregistrer localement
      saveToLocalStorage();
+     
+     // Ajouter à la file d'attente de synchronisation
      queueOperation({
        type: 'updateLeaveBalance',
-       data: { userId: userId, balance: appData.leaveBalances[userId] }
+       data: {
+         userId: userId,
+         balance: appData.leaveBalances[userId]
+       }
      });
    }
  }
 
- // Mettre à jour l'affichage des soldes
+ // Mise à jour de l'affichage des soldes de congés
  function updateLeaveBalanceDisplay() {
    if (!appData.currentUser || appData.currentUser.role !== "Employé") return;
    const userId = appData.currentUser.id;
@@ -1250,21 +1310,22 @@ html
    document.getElementById('recovery-leave-balance').textContent = `${appData.leaveBalances[userId].recovery} jours`;
  }
 
- // Calculer les jours entre deux dates
+ // Calcul du nombre de jours entre deux dates
  function calculateDaysBetweenDates(startDate, endDate) {
    const start = new Date(startDate);
    const end = new Date(endDate);
    const diffTime = Math.abs(end - start);
-   return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+   return diffDays;
  }
 
- // Formater une date
+ // Formatage d'une date
  function formatDate(dateStr) {
    const options = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
    return new Date(dateStr).toLocaleDateString('fr-FR', options);
  }
 
- // Obtenir la classe CSS pour un statut
+ // Obtention de la classe CSS pour un statut
  function getStatusClass(status) {
    switch(status) {
      case "En attente": return "status-pending";
@@ -1274,26 +1335,80 @@ html
    }
  }
 
- // Obtenir l'icône pour un statut
+ // Obtention de l'icône pour un statut
  function getStatusIcon(status) {
    switch(status) {
-     case "En attente": return '<i class="fas fa-hourglass-half mr-1"></i>';
+     case "En attente": return '<i class="fas fa-clock mr-1"></i>';
      case "Approuvée": return '<i class="fas fa-check mr-1"></i>';
      case "Refusée": return '<i class="fas fa-times mr-1"></i>';
-     default: return '';
+     default: return "";
    }
  }
 
- // Obtenir un utilisateur par ID
- function getUserById(userId) {
-   const user = appData.users.find(u => u.id === userId);
-   return user || { name: "Employé inconnu", email: "" };
+ // Recherche d'un utilisateur par son ID
+ function getUserById(id) {
+   const user = appData.users.find(user => user.id === id);
+   if (!user) {
+     console.error(`Utilisateur avec id ${id} non trouvé.`);
+     return { name: "Employé inconnu" };
+   }
+   return user;
  }
 
- // Afficher une vue spécifique
+ // Affichage d'une notification
+ function showNotification(message, type = 'info') {
+   const container = document.getElementById('notification-container');
+   const notificationEl = document.createElement('div');
+   notificationEl.className = `notification mb-2 p-3 rounded-lg shadow-lg max-w-md ${
+     type === 'success' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-100' : 
+     type === 'error' ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-100' : 
+     'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-100'
+   }`;
+   const icon = type === 'success' ? '<i class="fas fa-check-circle mr-2"></i>' : 
+     type === 'error' ? '<i class="fas fa-exclamation-circle mr-2"></i>' : 
+     '<i class="fas fa-info-circle mr-2"></i>';
+   notificationEl.innerHTML = `<div class="flex items-center">${icon}<span>${message}</span></div>`;
+   container.appendChild(notificationEl);
+   setTimeout(() => notificationEl.remove(), 3000);
+ }
+
+ // Affichage d'une vue
  function showView(viewId) {
-   document.querySelectorAll('.view-transition').forEach(view => view.classList.add('hidden'));
-   document.getElementById(viewId).classList.remove('hidden');
+   document.querySelectorAll('main > div[id$="-view"]').forEach(view => view.classList.add('hidden'));
+   const viewToShow = document.getElementById(viewId);
+   if (viewToShow) {
+     viewToShow.classList.remove('hidden');
+     viewToShow.classList.add('view-transition');
+     if (viewId === 'employee-view') {
+       updateEmployeeRequestsTable();
+       updateLeaveBalanceDisplay();
+     } else if (viewId === 'manager-view') {
+       updateManagerRequestsTables();
+       updateUsersTable();
+     }
+   }
+ }
+
+ // Affichage d'une modal
+ function showModal(title, content, actions) {
+   const modalContainer = document.getElementById('modal-container');
+   const modalContent = document.getElementById('modal-content');
+   modalContent.innerHTML = `
+     <div class="p-6">
+       <h3 class="text-lg font-medium text-gray-900 dark:text-white">${title}</h3>
+       <div class="mt-4">${content}</div>
+       <div class="mt-6 flex flex-row-reverse gap-2">${actions}</div>
+     </div>
+   `;
+   modalContainer.classList.remove('hidden');
+   modalContent.querySelectorAll('.modal-close').forEach(button => {
+     button.addEventListener('click', closeModal);
+   });
+ }
+
+ // Fermeture d'une modal
+ function closeModal() {
+   document.getElementById('modal-container').classList.add('hidden');
  }
 
  // Configuration du formulaire de congé
@@ -1302,12 +1417,14 @@ html
    const startDateInput = document.getElementById('leave-start-date');
    const endDateInput = document.getElementById('leave-end-date');
    const daysInput = document.getElementById('leave-days');
+   const leaveTypeSelect = document.getElementById('leave-type');
 
    function updateDays() {
-     const start = startDateInput.value;
-     const end = endDateInput.value;
-     if (start && end && new Date(start) <= new Date(end)) {
-       daysInput.value = calculateDaysBetweenDates(start, end);
+     const startDate = startDateInput.value;
+     const endDate = endDateInput.value;
+     if (startDate && endDate) {
+       const days = calculateDaysBetweenDates(startDate, endDate);
+       daysInput.value = days;
      } else {
        daysInput.value = '';
      }
@@ -1316,71 +1433,86 @@ html
    startDateInput.addEventListener('change', updateDays);
    endDateInput.addEventListener('change', updateDays);
 
-   form.addEventListener('submit', async (e) => {
+   form.addEventListener('submit', function(e) {
      e.preventDefault();
-     const type = document.getElementById('leave-type').value;
+     const leaveType = leaveTypeSelect.value;
      const startDate = startDateInput.value;
      const endDate = endDateInput.value;
      const days = parseInt(daysInput.value);
      const today = new Date().toISOString().split('T')[0];
 
      if (startDate < today) {
-       showNotification("La date de début ne peut pas être dans le passé.", "error");
+       showNotification("La date de sortie ne peut pas être dans le passé.", "error");
        return;
      }
      if (endDate < startDate) {
-       showNotification("La date de fin doit être après la date de début.", "error");
+       showNotification("La date d'entrée doit être postérieure à la date de sortie.", "error");
+       return;
+     }
+     if (!leaveType) {
+       showNotification("Veuillez sélectionner un type de congé.", "error");
        return;
      }
 
-     const balanceKey = type.toLowerCase();
      const userId = appData.currentUser.id;
      initializeLeaveBalances(userId);
-     if (appData.leaveBalances[userId][balanceKey] < days) {
-       showNotification("Solde de congé insuffisant.", "error");
+     const leaveBalance = appData.leaveBalances[userId];
+     const balanceKey = leaveType.toLowerCase();
+     const availableDays = leaveBalance[balanceKey];
+
+     if (days > availableDays) {
+       showNotification(`Vous n'avez pas assez de jours disponibles pour le congé ${leaveType}. Il vous reste ${availableDays} jours.`, "error");
        return;
      }
 
      const newRequest = {
-       id: Date.now(),
-       type: `Congé ${type}`,
-       leaveType: type,
+       id: Date.now(), // Utilisation de timestamp pour garantir l'unicité
+       type: `Congé ${leaveType}`,
        date: startDate,
        details: `Du ${formatDate(startDate)} au ${formatDate(endDate)} (${days} jours)`,
-       days: days,
        status: "En attente",
-       employeeId: userId,
+       employeeId: appData.currentUser.id,
        managerId: 76,
        createdAt: new Date().toISOString(),
-       comment: ""
+       comment: "",
+       leaveType: leaveType,
+       days: days
      };
 
      appData.requests.push(newRequest);
-     await saveToLocalStorage();
-     queueOperation({ type: 'addRequest', data: newRequest });
+     saveToLocalStorage();
+     
+     // Ajouter à la file d'attente de synchronisation
+     queueOperation({
+       type: 'addRequest',
+       data: newRequest
+     });
+     
      form.reset();
+     daysInput.value = '';
      updateEmployeeRequestsTable();
-     showNotification("Demande de congé soumise avec succès.", "success");
+     showNotification("Votre demande de congé a été soumise avec succès.", "success");
    });
  }
 
- // Configuration du formulaire d'autorisation de sortie
+ // Configuration du formulaire de demande d'autorisation de sortie
  function setupLeaveRequestForm() {
    const form = document.getElementById('leave-request-form');
    const reasonSelect = document.getElementById('leave-reason');
    const otherReasonContainer = document.getElementById('other-reason-container');
 
-   reasonSelect.addEventListener('change', () => {
-     otherReasonContainer.classList.toggle('hidden', reasonSelect.value !== "Autre");
+   reasonSelect.addEventListener('change', function() {
+     const isOther = this.value === 'Autre';
+     otherReasonContainer.classList.toggle('hidden', !isOther);
+     document.getElementById('other-reason').toggleAttribute('required', isOther);
    });
 
-   form.addEventListener('submit', async (e) => {
+   form.addEventListener('submit', function(e) {
      e.preventDefault();
      const date = document.getElementById('leave-date').value;
-     const reason = reasonSelect.value;
      const startTime = document.getElementById('leave-start-time').value;
      const endTime = document.getElementById('leave-end-time').value;
-     const otherReason = document.getElementById('other-reason')?.value.trim() || "";
+     let reason = reasonSelect.value;
      const today = new Date().toISOString().split('T')[0];
 
      if (date < today) {
@@ -1388,16 +1520,28 @@ html
        return;
      }
      if (startTime >= endTime) {
-       showNotification("L'heure de retour doit être après l'heure de sortie.", "error");
+       showNotification("L'heure de retour doit être postérieure à l'heure de sortie.", "error");
+       return;
+     }
+     if (!reason) {
+       showNotification("Veuillez sélectionner un motif.", "error");
        return;
      }
 
-     const details = reason === "Autre" ? otherReason : reason;
+     if (reason === 'Autre') {
+       const otherReason = document.getElementById('other-reason').value.trim();
+       if (!otherReason) {
+         showNotification("Veuillez préciser le motif de votre sortie.", "error");
+         return;
+       }
+       reason = otherReason;
+     }
+
      const newRequest = {
-       id: Date.now(),
+       id: Date.now(), // Utilisation de timestamp pour garantir l'unicité
        type: "Autorisation de sortie",
        date,
-       details: `${details} de ${startTime} à ${endTime}`,
+       details: `De ${startTime} à ${endTime} - ${reason}`,
        status: "En attente",
        employeeId: appData.currentUser.id,
        managerId: 76,
@@ -1406,22 +1550,28 @@ html
      };
 
      appData.requests.push(newRequest);
-     await saveToLocalStorage();
-     queueOperation({ type: 'addRequest', data: newRequest });
+     saveToLocalStorage();
+     
+     // Ajouter à la file d'attente de synchronisation
+     queueOperation({
+       type: 'addRequest',
+       data: newRequest
+     });
+     
      form.reset();
      otherReasonContainer.classList.add('hidden');
      updateEmployeeRequestsTable();
-     showNotification("Demande d'autorisation soumise avec succès.", "success");
+     showNotification("Votre demande a été soumise avec succès.", "success");
    });
  }
 
- // Configuration du formulaire d'avance sur salaire
+ // Configuration du formulaire de demande d'avance sur salaire
  function setupAdvanceRequestForm() {
    const form = document.getElementById('advance-request-form');
-   form.addEventListener('submit', async (e) => {
+   form.addEventListener('submit', function(e) {
      e.preventDefault();
      const date = document.getElementById('advance-date').value;
-     const amount = parseFloat(document.getElementById('advance-amount').value);
+     const amount = document.getElementById('advance-amount').value;
      const today = new Date().toISOString().split('T')[0];
 
      if (date < today) {
@@ -1434,7 +1584,7 @@ html
      }
 
      const newRequest = {
-       id: Date.now(),
+       id: Date.now(), // Utilisation de timestamp pour garantir l'unicité
        type: "Avance sur salaire",
        date,
        details: `Montant : ${amount} €`,
@@ -1446,15 +1596,21 @@ html
      };
 
      appData.requests.push(newRequest);
-     await saveToLocalStorage();
-     queueOperation({ type: 'addRequest', data: newRequest });
+     saveToLocalStorage();
+     
+     // Ajouter à la file d'attente de synchronisation
+     queueOperation({
+       type: 'addRequest',
+       data: newRequest
+     });
+     
      form.reset();
      updateEmployeeRequestsTable();
-     showNotification("Demande d'avance soumise avec succès.", "success");
+     showNotification("Votre demande d'avance sur salaire a été soumise avec succès.", "success");
    });
  }
 
- // Mettre à jour le tableau des demandes employé
+ // Mise à jour du tableau des demandes de l'employé
  function updateEmployeeRequestsTable() {
    if (!appData.currentUser || appData.currentUser.role !== "Employé") return;
    const tableBody = document.querySelector('#employee-requests-table tbody');
@@ -1482,7 +1638,7 @@ html
    `).join('');
  }
 
- // Mettre à jour les tableaux des demandes manager
+ // Mise à jour des tableaux des demandes pour le responsable
  function updateManagerRequestsTables() {
    if (!appData.currentUser || appData.currentUser.role !== "Responsable") return;
    const pendingTableBody = document.querySelector('#pending-requests-table tbody');
@@ -1499,7 +1655,7 @@ html
        const employee = getUserById(req.employeeId);
        return `
          <tr>
-           <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${employee.name}</td>
+           <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${employee ? employee.name : 'Employé inconnu'}</td>
            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${req.type}</td>
            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${formatDate(req.date)}</td>
            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${req.details}</td>
@@ -1518,13 +1674,15 @@ html
      }).join('');
 
      pendingTableBody.querySelectorAll('.approve-btn').forEach(button => {
-       button.removeEventListener('click', approveRequestHandler); // Nettoyage
-       button.addEventListener('click', approveRequestHandler);
+       button.addEventListener('click', function() {
+         approveRequest(parseInt(this.getAttribute('data-request-id')));
+       });
      });
 
      pendingTableBody.querySelectorAll('.reject-btn').forEach(button => {
-       button.removeEventListener('click', rejectRequestHandler);
-       button.addEventListener('click', rejectRequestHandler);
+       button.addEventListener('click', function() {
+         showRejectModal(parseInt(this.getAttribute('data-request-id')));
+       });
      });
    }
 
@@ -1542,7 +1700,7 @@ html
        const employee = getUserById(req.employeeId);
        return `
          <tr>
-           <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${employee.name}</td>
+           <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${employee ? employee.name : 'Employé inconnu'}</td>
            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${req.type}</td>
            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${formatDate(req.date)}</td>
            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${req.details}</td>
@@ -1556,20 +1714,11 @@ html
    }
  }
 
- function approveRequestHandler(e) {
-   const requestId = parseInt(e.target.closest('button').getAttribute('data-request-id'));
-   approveRequest(requestId);
- }
-
- function rejectRequestHandler(e) {
-   const requestId = parseInt(e.target.closest('button').getAttribute('data-request-id'));
-   showRejectModal(requestId);
- }
-
- // Mettre à jour le tableau des utilisateurs
+ // Mise à jour du tableau des utilisateurs
  function updateUsersTable() {
    if (!appData.currentUser || appData.currentUser.role !== "Responsable") return;
    const tableBody = document.querySelector('#users-table tbody');
+   
    tableBody.innerHTML = appData.users.map(user => `
      <tr>
        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">${user.id}</td>
@@ -1589,65 +1738,75 @@ html
      </tr>
    `).join('');
 
+   // Ajout des écouteurs d'événements pour les boutons d'édition et de suppression
    tableBody.querySelectorAll('.edit-user-btn').forEach(button => {
-     button.removeEventListener('click', editUserHandler);
-     button.addEventListener('click', editUserHandler);
+     button.addEventListener('click', function() {
+       const userId = parseInt(this.getAttribute('data-user-id'));
+       showEditUserModal(userId);
+     });
    });
 
    tableBody.querySelectorAll('.delete-user-btn').forEach(button => {
-     button.removeEventListener('click', deleteUserHandler);
-     button.addEventListener('click', deleteUserHandler);
+     button.addEventListener('click', function() {
+       const userId = parseInt(this.getAttribute('data-user-id'));
+       showDeleteUserModal(userId);
+     });
    });
  }
 
- function editUserHandler(e) {
-   const userId = parseInt(e.target.closest('button').getAttribute('data-user-id'));
-   showEditUserModal(userId);
- }
-
- function deleteUserHandler(e) {
-   const userId = parseInt(e.target.closest('button').getAttribute('data-user-id'));
-   showDeleteUserModal(userId);
- }
-
- // Approuver une demande
+ // Approbation d'une demande
  async function approveRequest(requestId) {
    const request = appData.requests.find(req => req.id === requestId);
    if (!request) return;
+
    request.status = "Approuvée";
    request.comment = "";
+
    if (request.type.startsWith("Congé")) {
      const userId = request.employeeId;
      initializeLeaveBalances(userId);
+     const leaveBalance = appData.leaveBalances[userId];
      const balanceKey = request.leaveType.toLowerCase();
-     appData.leaveBalances[userId][balanceKey] -= request.days;
-     if (appData.currentUser?.id === userId && appData.currentUser.role === "Employé") {
+     leaveBalance[balanceKey] -= request.days;
+
+     if (appData.currentUser && appData.currentUser.id === userId && appData.currentUser.role === "Employé") {
        updateLeaveBalanceDisplay();
      }
+     
+     // Ajouter à la file d'attente de synchronisation pour les soldes de congés
      queueOperation({
        type: 'updateLeaveBalance',
-       data: { userId: userId, balance: appData.leaveBalances[userId] }
+       data: {
+         userId: userId,
+         balance: leaveBalance
+       }
      });
    }
-   queueOperation({ type: 'updateRequest', data: request });
+
+   // Ajouter à la file d'attente de synchronisation pour la demande
+   queueOperation({
+     type: 'updateRequest',
+     data: request
+   });
+   
    await saveToLocalStorage();
    updateManagerRequestsTables();
    updateEmployeeRequestsTable();
-   showNotification(`Demande de ${getUserById(request.employeeId).name} approuvée.`, "success");
+   showNotification(`La demande de ${getUserById(request.employeeId).name} a été approuvée.`, "success");
  }
 
- // Afficher la modale de rejet
+ // Affichage de la modal de rejet
  function showRejectModal(requestId) {
    const request = appData.requests.find(req => req.id === requestId);
    if (!request) return;
    const employee = getUserById(request.employeeId);
    const modalContent = `
      <p class="text-gray-700 dark:text-gray-300">
-       Refus de la demande de ${employee.name} pour le ${formatDate(request.date)}.
+       Vous êtes sur le point de refuser la demande de ${employee.name} pour le ${formatDate(request.date)}.
      </p>
      <div class="mt-4">
-       <label for="reject-reason" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Motif (optionnel)</label>
-       <textarea id="reject-reason" rows="3" class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white" placeholder="Raison du refus..."></textarea>
+       <label for="reject-reason" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Motif du refus (optionnel)</label>
+       <textarea id="reject-reason" rows="3" class="mt-1 text-base block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white" placeholder="Expliquez pourquoi vous refusez cette demande..."></textarea>
      </div>
    `;
    const modalActions = `
@@ -2559,3 +2718,5 @@ html
  // Démarrage de l'application lorsque le DOM est chargé
  document.addEventListener('DOMContentLoaded', initApp);
 </script>
+</body>
+</html>
