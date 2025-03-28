@@ -490,7 +490,7 @@
  </div>
 
  <script>
- // Configuration de Firebase avec notre application spécifique
+ // Configuration de  avec notre application spécifique
  const firebaseConfig = {
   apiKey: "AIzaSyAk3qhQnJEqi2e5BQrydTFhPqoohHfVbzY",
   authDomain: "gestion-conges-app.firebaseapp.com",
@@ -502,8 +502,9 @@
  };
 
  // Initialiser Firebase
- firebase.initializeApp(firebaseConfig);
- const db = firebase.firestore();
+  const app = firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
  
  // Structure des données de l'application
  const appData = {
