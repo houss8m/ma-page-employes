@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestion du Personnel et Sanctions</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.0/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -27,8 +29,13 @@
         .rtl {
             direction: rtl;
         }
+        .ltr {
+            direction: ltr;
+        }
         :root {
             --primary-color: #5D5CDE;
+            --bg-color: #FFFFFF;
+            --text-color: #1a202c;
         }
         .dark {
             --bg-color: #181818;
@@ -41,35 +48,323 @@
             border-bottom: 2px solid var(--primary-color);
             color: var(--primary-color);
         }
+        .tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        .tooltip .tooltip-text {
+            visibility: hidden;
+            width: 200px;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .tooltip:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+        .filter-input {
+            transition: all 0.3s ease;
+        }
+        .filter-input:focus {
+            box-shadow: 0 0 0 3px rgba(93, 92, 222, 0.3);
+        }
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: var(--primary-color);
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: var(--primary-color);
+        }
+        .disabled-date {
+            cursor: not-allowed;
+            background-color: #f3f4f6;
+        }
+        /* Spinner pour les états de chargement */
+        .spinner {
+            border: 3px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top: 3px solid var(--primary-color);
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .dark .spinner {
+            border-color: rgba(255, 255, 255, 0.1);
+            border-top-color: var(--primary-color);
+        }
+        /* Animation pour les messages d'alerte */
+        .alert {
+            animation: fadeInOut 4s ease-in-out;
+        }
+        @keyframes fadeInOut {
+            0% { opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+        .history-card {
+            transition: all 0.3s ease;
+        }
+        .history-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        /* Dashboard styles */
+        .dashboard-card {
+            transition: all 0.3s ease;
+        }
+        .dashboard-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 15px -3px rgba(93, 92, 222, 0.15), 0 4px 6px -2px rgba(93, 92, 222, 0.1);
+        }
+        /* Animations pour transitions de pages */
+        .page-transition {
+            opacity: 0;
+            transform: translateY(10px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        .page-transition.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        /* Badge pour notifications */
+        .badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background-color: #EF4444;
+            color: white;
+            border-radius: 50%;
+            min-width: 18px;
+            height: 18px;
+            font-size: 10px;
+            line-height: 18px;
+            text-align: center;
+        }
+        /* Style pour le bouton de langue */
+        .language-switch {
+            transition: all 0.2s ease;
+        }
+        .language-switch:hover {
+            transform: translateY(-2px);
+        }
+        /* Animation pour le logo spinner */
+        .logo-spin {
+            animation: logospin 10s linear infinite;
+        }
+        @keyframes logospin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        /* Styles pour les onglets */
+        .tab-hover:hover {
+            background-color: rgba(93, 92, 222, 0.1);
+            border-radius: 0.25rem;
+        }
     </style>
 </head>
 <body class="bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-colors duration-200">
+    <!-- Notifications -->
+    <div id="notification-container" class="fixed top-4 right-4 z-50" aria-live="polite"></div>
+    
     <div class="container mx-auto px-4 py-8 max-w-6xl">
-        <h1 class="text-3xl font-bold text-center mb-8">Gestion du Personnel et Sanctions</h1>
+        <div class="flex flex-col sm:flex-row justify-between items-center mb-8 space-y-4 sm:space-y-0">
+            <div class="flex items-center">
+                <div class="mr-3 text-primary-600 hidden sm:block">
+                    <svg class="w-8 h-8 logo-spin text-indigo-600" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-5-9h10v2H7z"/>
+                    </svg>
+                </div>
+                <h1 class="text-2xl sm:text-3xl font-bold text-center">Gestion du Personnel et Sanctions</h1>
+            </div>
+            
+            <div class="flex items-center space-x-3">
+                <!-- Language Selector -->
+                <div class="relative">
+                    <button id="languageToggle" class="language-switch flex items-center bg-gray-100 dark:bg-gray-800 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <span id="currentLang">Français</span>
+                        <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                        </svg>
+                    </button>
+                    <div id="languageDropdown" class="hidden absolute right-0 mt-2 w-40 bg-white dark:bg-gray-800 rounded-md shadow-lg z-10 border border-gray-200 dark:border-gray-700">
+                        <ul>
+                            <li><button id="lang-fr" class="block w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700">Français</button></li>
+                            <li><button id="lang-ar" class="block w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700">العربية</button></li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <!-- Dark Mode Toggle -->
+                <div class="flex items-center">
+                    <span class="mr-2 text-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                        </svg>
+                    </span>
+                    <div class="relative inline-block w-10 mr-2 align-middle select-none">
+                        <input type="checkbox" id="darkModeToggle" name="darkModeToggle" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" aria-label="Activer/désactiver le mode sombre"/>
+                        <label for="darkModeToggle" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+                    </div>
+                    <span class="text-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                        </svg>
+                    </span>
+                </div>
+            </div>
+        </div>
         
         <!-- Tabs -->
-        <div class="flex mb-6 border-b no-print">
-            <button id="tab-employes" class="px-4 py-2 font-medium tab-active">Employés</button>
-            <button id="tab-sanctions" class="px-4 py-2 font-medium">Sanctions</button>
+        <div class="flex flex-wrap mb-6 border-b no-print" role="tablist">
+            <button id="tab-dashboard" role="tab" aria-selected="true" aria-controls="section-dashboard" class="px-4 py-2 font-medium tab-active tab-hover flex items-center">
+                <i class="fas fa-chart-pie mr-2"></i>
+                <span class="tab-text">Tableau de bord</span>
+            </button>
+            <button id="tab-employes" role="tab" aria-selected="false" aria-controls="section-employes" class="px-4 py-2 font-medium tab-hover flex items-center">
+                <i class="fas fa-users mr-2"></i>
+                <span class="tab-text">Employés</span>
+            </button>
+            <button id="tab-sanctions" role="tab" aria-selected="false" aria-controls="section-sanctions" class="px-4 py-2 font-medium tab-hover flex items-center">
+                <i class="fas fa-exclamation-triangle mr-2"></i>
+                <span class="tab-text">Sanctions</span>
+            </button>
+            <button id="tab-historique" role="tab" aria-selected="false" aria-controls="section-historique" class="px-4 py-2 font-medium tab-hover flex items-center">
+                <i class="fas fa-history mr-2"></i>
+                <span class="tab-text">Historique</span>
+            </button>
+            <button id="tab-rappels" role="tab" aria-selected="false" aria-controls="section-rappels" class="px-4 py-2 font-medium tab-hover flex items-center relative">
+                <i class="fas fa-bell mr-2"></i>
+                <span class="tab-text">Rappels</span>
+                <span id="rappels-badge" class="badge hidden">0</span>
+            </button>
+        </div>
+        
+        <!-- Dashboard Section -->
+        <div id="section-dashboard" role="tabpanel" aria-labelledby="tab-dashboard" class="mb-8 page-transition active">
+            <div class="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg mb-6">
+                <h2 class="text-xl font-semibold mb-4 flex items-center">
+                    <i class="fas fa-tachometer-alt mr-2"></i>
+                    <span id="dashboard-title">Tableau de bord RH</span>
+                </h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <!-- Total Employees Card -->
+                    <div class="dashboard-card bg-white dark:bg-gray-700 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-600">
+                        <div class="flex items-center">
+                            <div class="rounded-full bg-blue-100 dark:bg-blue-900 p-3 mr-4">
+                                <i class="fas fa-users text-blue-600 dark:text-blue-300"></i>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-500 dark:text-gray-400" id="employees-label">Employés</p>
+                                <p class="text-2xl font-bold" id="employees-count">0</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Active Sanctions Card -->
+                    <div class="dashboard-card bg-white dark:bg-gray-700 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-600">
+                        <div class="flex items-center">
+                            <div class="rounded-full bg-red-100 dark:bg-red-900 p-3 mr-4">
+                                <i class="fas fa-exclamation-circle text-red-600 dark:text-red-300"></i>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-500 dark:text-gray-400" id="active-sanctions-label">Sanctions actives</p>
+                                <p class="text-2xl font-bold" id="active-sanctions-count">0</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Total Decisions Card -->
+                    <div class="dashboard-card bg-white dark:bg-gray-700 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-600">
+                        <div class="flex items-center">
+                            <div class="rounded-full bg-green-100 dark:bg-green-900 p-3 mr-4">
+                                <i class="fas fa-clipboard-list text-green-600 dark:text-green-300"></i>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-500 dark:text-gray-400" id="total-decisions-label">Décisions totales</p>
+                                <p class="text-2xl font-bold" id="total-decisions-count">0</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Sanctions by Degree Chart -->
+                    <div class="bg-white dark:bg-gray-700 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-600">
+                        <h3 class="text-lg font-medium mb-3" id="sanctions-by-degree-title">Sanctions par degré</h3>
+                        <div class="h-64">
+                            <canvas id="sanctionsByDegreeChart"></canvas>
+                        </div>
+                    </div>
+                    
+                    <!-- Sanctions by Month Chart -->
+                    <div class="bg-white dark:bg-gray-700 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-600">
+                        <h3 class="text-lg font-medium mb-3" id="sanctions-by-month-title">Sanctions par mois</h3>
+                        <div class="h-64">
+                            <canvas id="sanctionsByMonthChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Recent Sanctions -->
+                <div class="bg-white dark:bg-gray-700 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-600 mt-6">
+                    <h3 class="text-lg font-medium mb-3" id="recent-sanctions-title">Sanctions récentes</h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full">
+                            <thead>
+                                <tr>
+                                    <th class="py-2 px-3 text-left" id="table-header-date">Date</th>
+                                    <th class="py-2 px-3 text-left" id="table-header-employee">Employé</th>
+                                    <th class="py-2 px-3 text-left" id="table-header-fault">Faute</th>
+                                    <th class="py-2 px-3 text-left" id="table-header-sanction">Sanction</th>
+                                    <th class="py-2 px-3 text-left" id="table-header-duration">Durée</th>
+                                    <th class="py-2 px-3 text-left" id="table-header-status">Statut</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recent-sanctions-table">
+                                <!-- Recent sanctions will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
         
         <!-- Employees Section -->
-        <div id="section-employes" class="mb-8">
+        <div id="section-employes" role="tabpanel" aria-labelledby="tab-employes" class="mb-8 hidden page-transition">
             <div class="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg mb-4">
                 <div class="flex flex-col md:flex-row md:items-center mb-4">
                     <div class="flex-1 mb-4 md:mb-0">
-                        <label for="search-matricule" class="block text-sm font-medium mb-1">Rechercher par Matricule</label>
-                        <input type="text" id="search-matricule" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="Entrez le matricule">
+                        <label for="search-matricule" class="block text-sm font-medium mb-1" id="search-matricule-label">Rechercher par Matricule</label>
+                        <input type="text" id="search-matricule" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="Entrez le matricule" aria-describedby="search-help">
+                        <p id="search-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Recherchez un employé par son matricule</p>
                     </div>
                     <div class="md:ml-4">
-                        <button id="search-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-                            Rechercher
+                        <button id="search-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" aria-label="Rechercher un employé">
+                            <i class="fas fa-search mr-2"></i>
+                            <span id="search-btn-text">Rechercher</span>
                         </button>
                     </div>
                 </div>
                 
                 <div id="employee-result" class="mt-4 hidden bg-white dark:bg-gray-700 p-4 rounded-md">
-                    <h3 class="text-xl font-semibold mb-2">Résultat de la recherche</h3>
+                    <h3 class="text-xl font-semibold mb-2" id="employee-result-title">Résultat de la recherche</h3>
                     <div id="employee-details" class="space-y-2">
                         <!-- Employee details will be displayed here -->
                     </div>
@@ -77,29 +372,42 @@
             </div>
             
             <div class="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg">
-                <h3 class="text-xl font-semibold mb-4">Gestion des Employés</h3>
+                <h3 class="text-xl font-semibold mb-4" id="employee-management-title">Gestion des Employés</h3>
                 
                 <div class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4 mb-4">
                     <div class="flex-1">
-                        <label class="block text-sm font-medium mb-1">Importer des Employés (JSON)</label>
-                        <input type="file" id="import-json" class="w-full p-2 border rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white" accept=".json">
+                        <label class="block text-sm font-medium mb-1" id="import-json-label">Importer des Employés (JSON)</label>
+                        <input type="file" id="import-json" class="w-full p-2 border rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white" accept=".json" aria-describedby="import-help">
+                        <p id="import-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Importez une liste d'employés au format JSON</p>
                     </div>
-                    <div class="flex items-end">
-                        <button id="add-employee-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
-                            Ajouter un Employé
+                    <div class="flex items-end space-x-2">
+                        <button id="export-employees-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50" aria-label="Exporter les employés">
+                            <i class="fas fa-download mr-2"></i>
+                            <span id="export-employees-text">Exporter</span>
+                        </button>
+                        <button id="add-employee-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50" aria-label="Ajouter un employé">
+                            <i class="fas fa-plus mr-2"></i>
+                            <span id="add-employee-text">Ajouter un Employé</span>
                         </button>
                     </div>
                 </div>
                 
+                <!-- Filter for employees -->
+                <div class="mb-4">
+                    <label for="filter-employee" class="block text-sm font-medium mb-1" id="filter-employee-label">Filtre rapide</label>
+                    <input type="text" id="filter-employee" class="filter-input w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="Filtrer par nom, prénom ou poste" aria-describedby="filter-employee-help">
+                    <p id="filter-employee-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Filtrez les employés pendant que vous tapez</p>
+                </div>
+                
                 <div id="employees-table-container" class="overflow-x-auto">
-                    <table id="employees-table" class="min-w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600">
+                    <table id="employees-table" class="min-w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600" aria-label="Liste des employés">
                         <thead>
                             <tr class="bg-gray-200 dark:bg-gray-800">
-                                <th class="py-2 px-4 border-b">Matricule</th>
-                                <th class="py-2 px-4 border-b">Nom</th>
-                                <th class="py-2 px-4 border-b">Prénom</th>
-                                <th class="py-2 px-4 border-b">Poste</th>
-                                <th class="py-2 px-4 border-b">Actions</th>
+                                <th class="py-2 px-4 border-b" scope="col" id="col-matricule">Matricule</th>
+                                <th class="py-2 px-4 border-b" scope="col" id="col-nom">Nom</th>
+                                <th class="py-2 px-4 border-b" scope="col" id="col-prenom">Prénom</th>
+                                <th class="py-2 px-4 border-b" scope="col" id="col-poste">Poste</th>
+                                <th class="py-2 px-4 border-b" scope="col" id="col-actions">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="employees-list">
@@ -111,58 +419,86 @@
         </div>
         
         <!-- Sanctions Section -->
-        <div id="section-sanctions" class="mb-8 hidden">
+        <div id="section-sanctions" role="tabpanel" aria-labelledby="tab-sanctions" class="mb-8 hidden page-transition">
             <div class="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg mb-4">
                 <div class="flex flex-col md:flex-row md:items-center mb-4">
                     <div class="flex-1 mb-4 md:mb-0">
-                        <label for="search-faute" class="block text-sm font-medium mb-1">Rechercher une Faute</label>
-                        <input type="text" id="search-faute" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="Entrez la faute">
+                        <label for="search-faute" class="block text-sm font-medium mb-1" id="search-faute-label">Rechercher une Faute</label>
+                        <input type="text" id="search-faute" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="Entrez la faute" aria-describedby="search-faute-help">
+                        <p id="search-faute-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Recherchez par mot-clé dans les fautes</p>
                     </div>
                     <div class="md:ml-4">
-                        <button id="search-faute-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-                            Rechercher
+                        <button id="search-faute-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" aria-label="Rechercher une faute">
+                            <i class="fas fa-search mr-2"></i>
+                            <span id="search-faute-btn-text">Rechercher</span>
                         </button>
                     </div>
                 </div>
                 
                 <div id="sanction-result" class="mt-4 hidden bg-white dark:bg-gray-700 p-4 rounded-md">
-                    <h3 class="text-xl font-semibold mb-2">Résultat de la recherche</h3>
-                    <div id="sanction-details" class="space-y-2 rtl">
+                    <h3 class="text-xl font-semibold mb-2" id="sanction-result-title">Résultat de la recherche</h3>
+                    <div id="sanction-details" class="space-y-2">
                         <!-- Sanction details will be displayed here -->
                     </div>
                     <div class="mt-4">
-                        <button id="create-decision-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
-                            Créer Décision
+                        <button id="create-decision-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50" aria-label="Créer une décision">
+                            <i class="fas fa-file-alt mr-2"></i>
+                            <span id="create-decision-text">Créer Décision</span>
                         </button>
                     </div>
                 </div>
             </div>
             
             <div class="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg">
-                <h3 class="text-xl font-semibold mb-4">Gestion des Sanctions</h3>
+                <h3 class="text-xl font-semibold mb-4" id="sanctions-management-title">Gestion des Sanctions</h3>
                 
                 <div class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4 mb-4">
                     <div class="flex-1">
-                        <label class="block text-sm font-medium mb-1">Importer des Sanctions (Excel)</label>
-                        <input type="file" id="import-excel" class="w-full p-2 border rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white" accept=".xlsx,.xls">
+                        <label class="block text-sm font-medium mb-1" id="import-excel-label">Importer des Sanctions (Excel)</label>
+                        <input type="file" id="import-excel" class="w-full p-2 border rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white" accept=".xlsx,.xls" aria-describedby="import-excel-help">
+                        <p id="import-excel-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Importez une liste de sanctions au format Excel</p>
                     </div>
-                    <div class="flex items-end">
-                        <button id="export-template-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">
-                            Exporter Modèle Excel
+                    <div class="flex items-end space-x-2">
+                        <button id="export-sanctions-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" aria-label="Exporter les sanctions">
+                            <i class="fas fa-file-export mr-2"></i>
+                            <span id="export-sanctions-text">Exporter</span>
+                        </button>
+                        <button id="export-template-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50" aria-label="Exporter le modèle Excel">
+                            <i class="fas fa-file-download mr-2"></i>
+                            <span id="export-template-text">Exporter Modèle Excel</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Filter for sanctions -->
+                <div class="mb-4">
+                    <label for="filter-sanction" class="block text-sm font-medium mb-1" id="filter-sanction-label">Filtre rapide</label>
+                    <input type="text" id="filter-sanction" class="filter-input w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="Filtrer par faute ou sanction" aria-describedby="filter-sanction-help">
+                    <p id="filter-sanction-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Filtrez les sanctions pendant que vous tapez</p>
+                </div>
+                
+                <!-- Language toggle for sanctions table -->
+                <div class="flex justify-end mb-2">
+                    <div class="inline-flex rounded-md shadow-sm" role="group">
+                        <button id="sanctions-lang-fr" class="px-4 py-2 text-sm font-medium text-blue-700 bg-white border border-gray-200 rounded-l-md hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-blue-500 dark:focus:text-white sanctions-lang-active">
+                            Français
+                        </button>
+                        <button id="sanctions-lang-ar" class="px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200 rounded-r-md hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-blue-500 dark:focus:text-white">
+                            العربية
                         </button>
                     </div>
                 </div>
                 
                 <div id="sanctions-table-container" class="overflow-x-auto mt-4">
-                    <table id="sanctions-table" class="min-w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600">
+                    <table id="sanctions-table" class="min-w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600" aria-label="Liste des sanctions">
                         <thead>
                             <tr class="bg-gray-200 dark:bg-gray-800">
-                                <th class="py-2 px-4 border-b">Faute</th>
-                                <th class="py-2 px-4 border-b">Degré</th>
-                                <th class="py-2 px-4 border-b">Sanction</th>
+                                <th class="py-2 px-4 border-b" scope="col" id="col-faute">Faute</th>
+                                <th class="py-2 px-4 border-b" scope="col" id="col-degre">Degré</th>
+                                <th class="py-2 px-4 border-b" scope="col" id="col-sanction">Sanction</th>
                             </tr>
                         </thead>
-                        <tbody id="sanctions-list" class="rtl">
+                        <tbody id="sanctions-list" class="ltr">
                             <!-- Sanctions will be listed here -->
                         </tbody>
                     </table>
@@ -170,104 +506,228 @@
             </div>
         </div>
         
+        <!-- Historique Section -->
+        <div id="section-historique" role="tabpanel" aria-labelledby="tab-historique" class="mb-8 hidden page-transition">
+            <div class="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg mb-4">
+                <h3 class="text-xl font-semibold mb-4" id="history-title">Historique des Sanctions par Employé</h3>
+                
+                <div class="flex flex-col md:flex-row md:items-end space-y-4 md:space-y-0 md:space-x-4 mb-4">
+                    <div class="flex-1">
+                        <label for="history-employee" class="block text-sm font-medium mb-1" id="history-employee-label">Sélectionner un Employé</label>
+                        <select id="history-employee" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" aria-describedby="history-employee-help">
+                            <option value="">-- Sélectionner un employé --</option>
+                            <option value="all">Tous les employés</option>
+                        </select>
+                        <p id="history-employee-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Sélectionnez un employé pour voir son historique de sanctions</p>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button id="view-history-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" aria-label="Afficher l'historique">
+                            <i class="fas fa-eye mr-2"></i>
+                            <span id="view-history-text">Afficher</span>
+                        </button>
+                        <button id="export-history-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50" aria-label="Exporter l'historique en Excel">
+                            <i class="fas fa-file-excel mr-2"></i>
+                            <span id="export-history-text">Exporter Excel</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="history-result" class="mt-4 hidden">
+                    <div class="flex justify-between items-center mb-2">
+                        <h4 class="text-lg font-medium" id="history-for-label">Sanctions pour: <span id="history-employee-name"></span></h4>
+                        
+                        <!-- Filter for historique -->
+                        <div class="w-64">
+                            <input type="text" id="filter-history" class="filter-input w-full p-2 border rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="Filtrer l'historique" aria-label="Filtrer l'historique">
+                        </div>
+                    </div>
+                    
+                    <div id="employee-history" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+                        <!-- History cards will be displayed here -->
+                    </div>
+                    
+                    <!-- Table view for history (visible only for export) -->
+                    <div id="history-table-container" class="hidden mt-4">
+                        <table id="history-table" class="min-w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600">
+                            <thead>
+                                <tr class="bg-gray-200 dark:bg-gray-800">
+                                    <th class="py-2 px-4 border-b" id="history-col-matricule">Matricule</th>
+                                    <th class="py-2 px-4 border-b" id="history-col-nom">Nom</th>
+                                    <th class="py-2 px-4 border-b" id="history-col-prenom">Prénom</th>
+                                    <th class="py-2 px-4 border-b" id="history-col-reference">Référence</th>
+                                    <th class="py-2 px-4 border-b" id="history-col-date">Date</th>
+                                    <th class="py-2 px-4 border-b" id="history-col-motif">Motif</th>
+                                    <th class="py-2 px-4 border-b" id="history-col-faute">Faute</th>
+                                    <th class="py-2 px-4 border-b" id="history-col-sanction">Sanction</th>
+                                    <th class="py-2 px-4 border-b" id="history-col-duree">Durée</th>
+                                    <th class="py-2 px-4 border-b" id="history-col-debut">Date Début</th>
+                                    <th class="py-2 px-4 border-b" id="history-col-reprise">Date Reprise</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-list">
+                                <!-- History will be listed here -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <p id="no-history" class="text-gray-500 dark:text-gray-400 mt-4 text-center hidden" id="no-history-text">Aucune sanction trouvée pour cet employé.</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Rappels Section -->
+        <div id="section-rappels" role="tabpanel" aria-labelledby="tab-rappels" class="mb-8 hidden page-transition">
+            <div class="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg mb-4">
+                <h3 class="text-xl font-semibold mb-4" id="reminders-title">Rappels et Notifications</h3>
+                
+                <div class="flex flex-col md:flex-row justify-between mb-4">
+                    <div>
+                        <p class="mb-2 text-gray-700 dark:text-gray-300" id="reminders-description">Liste des rappels pour les fins de sanctions et les retours d'employés</p>
+                    </div>
+                    <div>
+                        <button id="mark-all-read-btn" class="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md flex items-center">
+                            <i class="fas fa-check-double mr-2"></i>
+                            <span id="mark-read-text">Marquer tout comme lu</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="reminders-container" class="space-y-3">
+                    <!-- Reminders will be displayed here -->
+                    <p id="no-reminders" class="text-center text-gray-500 dark:text-gray-400 py-4 hidden">Aucun rappel disponible pour le moment.</p>
+                </div>
+            </div>
+        </div>
+        
         <!-- Decision Form -->
-        <div id="decision-form" class="hidden mb-8 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg">
-            <h3 class="text-xl font-semibold mb-4">Formulaire de Décision de Sanction</h3>
+        <div id="decision-form" class="hidden mb-8 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg page-transition">
+            <h3 class="text-xl font-semibold mb-4" id="decision-form-title">Formulaire de Décision de Sanction</h3>
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
-                    <label for="decision-employee" class="block text-sm font-medium mb-1">Sélectionner un Employé</label>
-                    <select id="decision-employee" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    <label for="decision-employee" class="block text-sm font-medium mb-1" id="decision-employee-label">Sélectionner un Employé <span class="text-red-500">*</span></label>
+                    <select id="decision-employee" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" required aria-describedby="employee-required">
                         <option value="">-- Sélectionner un employé --</option>
                     </select>
+                    <p id="employee-required" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Champ obligatoire</p>
                 </div>
                 <div>
-                    <label for="decision-date" class="block text-sm font-medium mb-1">Date de la Décision</label>
-                    <input type="date" id="decision-date" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    <label for="decision-date" class="block text-sm font-medium mb-1" id="decision-date-label">Date de la Décision <span class="text-red-500">*</span></label>
+                    <input type="date" id="decision-date" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" required aria-describedby="date-required">
+                    <p id="date-required" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Champ obligatoire</p>
                 </div>
             </div>
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
-                    <label for="decision-reference-num" class="block text-sm font-medium mb-1">Numéro de Référence</label>
+                    <label for="decision-reference-num" class="block text-sm font-medium mb-1" id="decision-reference-label">Numéro de Référence <span class="text-red-500">*</span></label>
                     <div class="flex items-center">
-                        <input type="number" id="decision-reference-num" class="w-20 p-2 border rounded-l-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" min="1" value="1" step="1">
+                        <input type="number" id="decision-reference-num" class="w-20 p-2 border rounded-l-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" min="1" value="1" step="1" required aria-label="Numéro de référence">
                         <span class="bg-gray-200 dark:bg-gray-600 px-2 py-2 text-gray-700 dark:text-gray-300">/RH/DCS/</span>
-                        <input type="number" id="decision-reference-year" class="w-24 p-2 border rounded-r-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" min="2000" max="2100">
+                        <input type="number" id="decision-reference-year" class="w-24 p-2 border rounded-r-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" min="2000" max="2100" required aria-label="Année de référence">
+                    </div>
+                    <div class="flex justify-end mt-1">
+                        <button id="auto-reference-btn" class="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 focus:outline-none" aria-label="Générer une référence automatiquement" id="auto-reference-text">
+                            Générer automatiquement
+                        </button>
                     </div>
                 </div>
                 <div>
-                    <label for="decision-effective-date" class="block text-sm font-medium mb-1">Date Début Sanction</label>
-                    <input type="date" id="decision-effective-date" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    <label for="decision-effective-date" class="block text-sm font-medium mb-1" id="decision-effective-date-label">Date Début Sanction <span class="text-red-500">*</span></label>
+                    <input type="date" id="decision-effective-date" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" required aria-describedby="effective-date-help">
+                    <p id="effective-date-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Date de début de la sanction</p>
                 </div>
             </div>
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
-                    <label for="decision-duree" class="block text-sm font-medium mb-1">Durée de la Sanction (jours)</label>
-                    <input type="number" id="decision-duree" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" min="1" value="1">
+                    <label for="decision-duree" class="block text-sm font-medium mb-1" id="decision-duree-label">Durée de la Sanction (jours) <span class="text-red-500">*</span></label>
+                    <input type="number" id="decision-duree" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" min="1" value="1" required aria-describedby="duree-help">
+                    <p id="duree-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Nombre de jours de sanction</p>
                 </div>
                 <div>
-                    <label for="decision-return-date" class="block text-sm font-medium mb-1">Date de Reprise</label>
-                    <input type="date" id="decision-return-date" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    <label for="decision-return-date" class="block text-sm font-medium mb-1" id="decision-return-date-label">Date de Reprise <span class="text-red-500">*</span></label>
+                    <input type="date" id="decision-return-date" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled-date" required aria-describedby="return-date-help" readonly>
+                    <p id="return-date-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Calculée automatiquement</p>
                 </div>
             </div>
             
             <div class="mb-4">
-                <label for="decision-motif" class="block text-sm font-medium mb-1">Motif</label>
-                <input type="text" id="decision-motif" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                <label for="decision-motif" class="block text-sm font-medium mb-1" id="decision-motif-label">Motif <span class="text-red-500">*</span></label>
+                <input type="text" id="decision-motif" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" required aria-describedby="motif-help">
+                <p id="motif-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Motif principal de la sanction</p>
             </div>
             
             <div class="mb-4">
-                <label for="decision-faute" class="block text-sm font-medium mb-1">Faute</label>
-                <select id="decision-faute" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white rtl">
+                <label for="decision-faute" class="block text-sm font-medium mb-1" id="decision-faute-label">Faute <span class="text-red-500">*</span></label>
+                <select id="decision-faute" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" required aria-describedby="faute-help">
                     <option value="">-- Sélectionner une faute --</option>
                 </select>
+                <p id="faute-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Type de faute commise</p>
             </div>
             
             <div class="mb-4">
-                <label for="decision-sanction" class="block text-sm font-medium mb-1">Sanction Appliquée</label>
-                <select id="decision-sanction" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white rtl">
+                <label for="decision-sanction" class="block text-sm font-medium mb-1" id="decision-sanction-label">Sanction Appliquée <span class="text-red-500">*</span></label>
+                <select id="decision-sanction" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" required aria-describedby="sanction-help">
                     <option value="">-- Sélectionner une sanction --</option>
                 </select>
+                <p id="sanction-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Type de sanction à appliquer</p>
             </div>
             
             <div class="mb-4">
-                <label for="decision-manquements" class="block text-sm font-medium mb-1">Manquements constatés</label>
-                <textarea id="decision-manquements" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" rows="3" placeholder="Entrez les manquements, un par ligne"></textarea>
+                <label for="decision-manquements" class="block text-sm font-medium mb-1" id="decision-manquements-label">Manquements constatés <span class="text-red-500">*</span></label>
+                <textarea id="decision-manquements" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" rows="3" placeholder="Entrez les manquements, un par ligne" required aria-describedby="manquements-help"></textarea>
+                <p id="manquements-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Listez les manquements, un par ligne</p>
             </div>
             
             <div class="mb-4">
-                <label for="decision-rh-name" class="block text-sm font-medium mb-1">Nom du Responsable RH</label>
-                <input type="text" id="decision-rh-name" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                <label for="decision-rh-name" class="block text-sm font-medium mb-1" id="decision-rh-name-label">Nom du Responsable RH <span class="text-red-500">*</span></label>
+                <input type="text" id="decision-rh-name" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" required aria-describedby="rh-name-help">
+                <p id="rh-name-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Nom complet du responsable RH</p>
             </div>
             
             <div class="flex justify-between">
-                <button id="cancel-decision-btn" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">
-                    Annuler
+                <button id="cancel-decision-btn" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50" aria-label="Annuler">
+                    <i class="fas fa-times mr-2"></i>
+                    <span id="cancel-decision-text">Annuler</span>
                 </button>
-                <button id="preview-decision-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-                    Aperçu
+                <button id="preview-decision-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" aria-label="Aperçu">
+                    <i class="fas fa-eye mr-2"></i>
+                    <span id="preview-decision-text">Aperçu</span>
                 </button>
-                <button id="save-decision-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
-                    Enregistrer et Imprimer
+                <button id="save-decision-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50" aria-label="Enregistrer et Imprimer">
+                    <i class="fas fa-save mr-2"></i>
+                    <span id="save-decision-text">Enregistrer et Imprimer</span>
                 </button>
             </div>
         </div>
         
         <!-- Print Preview -->
-        <div id="print-preview" class="hidden mb-8">
+        <div id="print-preview" class="hidden mb-8 page-transition">
             <div class="bg-white p-8 rounded-lg shadow-lg">
                 <div class="flex justify-between mb-8 no-print">
-                    <button id="back-from-preview-btn" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">
-                        Retour
+                    <button id="back-from-preview-btn" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50" aria-label="Retour">
+                        <i class="fas fa-arrow-left mr-2"></i>
+                        <span id="back-preview-text">Retour</span>
                     </button>
-                    <button id="print-decision-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-                        Imprimer
-                    </button>
+                    <div class="flex space-x-2">
+                        <button id="export-pdf-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50" aria-label="Exporter en PDF">
+                            <i class="fas fa-file-pdf mr-2"></i>
+                            <span id="export-pdf-text">Exporter PDF</span>
+                        </button>
+                        <button id="print-decision-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" aria-label="Imprimer">
+                            <i class="fas fa-print mr-2"></i>
+                            <span id="print-decision-text">Imprimer</span>
+                        </button>
+                        <button id="toggle-language-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50" aria-label="Changer de langue">
+                            <i class="fas fa-language mr-2"></i>
+                            <span id="toggle-language-text">Version Arabe</span>
+                        </button>
+                    </div>
                 </div>
                 
-                <div id="decision-document" class="border p-8 max-w-4xl mx-auto">
+                <!-- French Version -->
+                <div id="decision-document-fr" class="border p-8 max-w-4xl mx-auto">
                     <div class="text-center mb-5">
                         <h2 class="text-2xl font-bold">EASY WAY ELECTRO</h2>
                         <p class="text-sm">VENTE PRODUITS ELECTRONIQUES ET ELECROMENAGERS</p>
@@ -289,11 +749,13 @@
                     
                     <div class="mb-4">
                         <p class="font-medium">Salarié : <span id="preview-name"></span></p>
+                        <p class="font-medium">Matricule : <span id="preview-matricule"></span></p>
+                        <p class="font-medium">Poste : <span id="preview-poste"></span></p>
                         <p class="font-medium mt-2">Motif: <span id="preview-motif"></span></p>
                     </div>
                     
                     <div class="my-6">
-                        <p>Après examen de votre questionnaire, il a été décidé de vous infliger une mise à pied disciplinaire de <span id="preview-duree"></span> jours ouvrés.</p>
+                        <p>Après examen de votre dossier, il a été décidé de vous infliger une mise à pied disciplinaire de <span id="preview-duree"></span> jours ouvrés.</p>
                     </div>
                     
                     <div class="mb-6">
@@ -318,40 +780,102 @@
                         <p class="italic">Tout manquement ultérieur pourra faire l'objet de sanctions plus sévères, pouvant aller jusqu'au licenciement.</p>
                     </div>
                 </div>
+                
+                <!-- Arabic Version -->
+                <div id="decision-document-ar" class="border p-8 max-w-4xl mx-auto hidden rtl">
+                    <div class="text-center mb-5">
+                        <h2 class="text-2xl font-bold">إيزي واي إلكترو</h2>
+                        <p class="text-sm">بيع المنتجات الإلكترونية والكهرومنزلية</p>
+                        <p class="text-sm">المقر الاجتماعي: 04 شارع أحمد واكد دالي ابراهيم - الجزائر</p>
+                    </div>
+                    
+                    <div class="flex justify-between mt-6 mb-8">
+                        <div>
+                            <p class="font-medium">الجزائر في: <span id="preview-date-ar"></span></p>
+                        </div>
+                        <div>
+                            <p class="font-medium">المرجع: <span id="preview-reference-ar"></span></p>
+                        </div>
+                    </div>
+                    
+                    <div class="text-center mb-6">
+                        <h2 class="text-xl font-bold underline">قرار إيقاف مؤقت عن العمل</h2>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <p class="font-medium">الموظف: <span id="preview-name-ar"></span></p>
+                        <p class="font-medium">رقم التسجيل: <span id="preview-matricule-ar"></span></p>
+                        <p class="font-medium">المنصب: <span id="preview-poste-ar"></span></p>
+                        <p class="font-medium mt-2">السبب: <span id="preview-motif-ar"></span></p>
+                    </div>
+                    
+                    <div class="my-6">
+                        <p>بعد فحص ملفك، تقرر توقيع عقوبة الإيقاف المؤقت عن العمل لمدة <span id="preview-duree-ar"></span> أيام عمل.</p>
+                    </div>
+                    
+                    <div class="mb-6">
+                        <p class="font-medium">لقد لاحظنا المخالفات التالية:</p>
+                        <ul id="preview-manquements-list-ar" class="list-disc pr-8 mt-2">
+                            <!-- Manquements seront ajoutés ici -->
+                        </ul>
+                    </div>
+                    
+                    <div class="my-6">
+                        <p>سيكون هذا الإيقاف ساري المفعول من <span id="preview-effective-date-ar"></span> إلى <span id="preview-end-date-ar"></span></p>
+                        <p class="mt-1">استئناف العمل في: <span id="preview-return-date-ar"></span></p>
+                        <p class="mt-4">خلال هذه الفترة، لن تتلقى أي أجر.</p>
+                    </div>
+                    
+                    <div class="mt-10 flex flex-col items-start">
+                        <p class="font-medium">مسؤول الموارد البشرية</p>
+                        <p id="preview-rh-name-ar" class="mt-16 border-t border-black pt-1 w-64 text-center"></p>
+                    </div>
+                    
+                    <div class="mt-8 border-t pt-4">
+                        <p class="italic">أي مخالفة لاحقة قد تؤدي إلى عقوبات أشد، بما في ذلك الفصل من العمل.</p>
+                    </div>
+                </div>
             </div>
         </div>
         
         <!-- Modal for adding/editing employee -->
         <div id="employee-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
-            <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg w-full max-w-md">
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg w-full max-w-md" role="dialog" aria-labelledby="modal-title" aria-modal="true">
                 <h3 id="modal-title" class="text-xl font-semibold mb-4">Ajouter un Employé</h3>
                 
                 <div class="mb-4">
-                    <label for="employee-matricule" class="block text-sm font-medium mb-1">Matricule</label>
-                    <input type="text" id="employee-matricule" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    <label for="employee-matricule" class="block text-sm font-medium mb-1" id="employee-matricule-label">Matricule <span class="text-red-500">*</span></label>
+                    <input type="text" id="employee-matricule" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" required pattern="^[0-9]+$" aria-describedby="matricule-help">
+                    <p id="matricule-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Uniquement des chiffres</p>
+                    <p id="duplicate-matricule-error" class="text-xs text-red-500 mt-1 hidden" id="duplicate-matricule-text">Ce matricule existe déjà</p>
                 </div>
                 
                 <div class="mb-4">
-                    <label for="employee-nom" class="block text-sm font-medium mb-1">Nom</label>
-                    <input type="text" id="employee-nom" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    <label for="employee-nom" class="block text-sm font-medium mb-1" id="employee-nom-label">Nom <span class="text-red-500">*</span></label>
+                    <input type="text" id="employee-nom" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" required pattern="^[A-Za-zÀ-ÖØ-öø-ÿ\s-]+$" aria-describedby="nom-help">
+                    <p id="nom-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Lettres, espaces et tirets uniquement</p>
                 </div>
                 
                 <div class="mb-4">
-                    <label for="employee-prenom" class="block text-sm font-medium mb-1">Prénom</label>
-                    <input type="text" id="employee-prenom" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    <label for="employee-prenom" class="block text-sm font-medium mb-1" id="employee-prenom-label">Prénom <span class="text-red-500">*</span></label>
+                    <input type="text" id="employee-prenom" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" required pattern="^[A-Za-zÀ-ÖØ-öø-ÿ\s-]+$" aria-describedby="prenom-help">
+                    <p id="prenom-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Lettres, espaces et tirets uniquement</p>
                 </div>
                 
                 <div class="mb-4">
-                    <label for="employee-poste" class="block text-sm font-medium mb-1">Poste</label>
-                    <input type="text" id="employee-poste" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    <label for="employee-poste" class="block text-sm font-medium mb-1" id="employee-poste-label">Poste <span class="text-red-500">*</span></label>
+                    <input type="text" id="employee-poste" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" required aria-describedby="poste-help">
+                    <p id="poste-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Intitulé du poste occupé</p>
                 </div>
                 
                 <div class="flex justify-end space-x-2">
-                    <button id="cancel-employee-btn" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">
-                        Annuler
+                    <button id="cancel-employee-btn" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50" aria-label="Annuler">
+                        <i class="fas fa-times mr-2"></i>
+                        <span id="cancel-employee-text">Annuler</span>
                     </button>
-                    <button id="save-employee-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
-                        Enregistrer
+                    <button id="save-employee-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50" aria-label="Enregistrer">
+                        <i class="fas fa-save mr-2"></i>
+                        <span id="save-employee-text">Enregistrer</span>
                     </button>
                 </div>
             </div>
@@ -359,17 +883,411 @@
     </div>
     
     <script>
-        // Dark mode detection
-        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-            document.documentElement.classList.add('dark');
-        }
-        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
-            if (event.matches) {
-                document.documentElement.classList.add('dark');
+        // Dark mode management
+        function initDarkMode() {
+            // Check stored preference first
+            const storedTheme = sessionStorage.getItem('theme');
+            if (storedTheme) {
+                if (storedTheme === 'dark') {
+                    document.documentElement.classList.add('dark');
+                    document.getElementById('darkModeToggle').checked = true;
+                } else {
+                    document.documentElement.classList.remove('dark');
+                    document.getElementById('darkModeToggle').checked = false;
+                }
             } else {
-                document.documentElement.classList.remove('dark');
+                // Fall back to system preference
+                if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                    document.documentElement.classList.add('dark');
+                    document.getElementById('darkModeToggle').checked = true;
+                }
             }
-        });
+            
+            // Listen for changes to system preference
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
+                // Only apply if user hasn't manually set a preference
+                if (!sessionStorage.getItem('theme')) {
+                    if (event.matches) {
+                        document.documentElement.classList.add('dark');
+                        document.getElementById('darkModeToggle').checked = true;
+                    } else {
+                        document.documentElement.classList.remove('dark');
+                        document.getElementById('darkModeToggle').checked = false;
+                    }
+                }
+            });
+            
+            // Set up the toggle
+            document.getElementById('darkModeToggle').addEventListener('change', function() {
+                if (this.checked) {
+                    document.documentElement.classList.add('dark');
+                    sessionStorage.setItem('theme', 'dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                    sessionStorage.setItem('theme', 'light');
+                }
+                showNotification(currentLang === 'fr' ? 'Mode d\'affichage modifié' : 'تم تغيير وضع العرض', 'info');
+            });
+        }
+        
+        // Language management
+        let currentLang = 'fr';
+        let currentSanctionsLang = 'fr';
+        let currentPreviewLang = 'fr';
+        
+        // Translations object
+        const translations = {
+            // UI Translations
+            'fr': {
+                // General
+                'employees-label': 'Employés',
+                'active-sanctions-label': 'Sanctions actives',
+                'total-decisions-label': 'Décisions totales',
+                'sanctions-by-degree-title': 'Sanctions par degré',
+                'sanctions-by-month-title': 'Sanctions par mois',
+                'recent-sanctions-title': 'Sanctions récentes',
+                'dashboard-title': 'Tableau de bord RH',
+                
+                // Table headers
+                'table-header-date': 'Date',
+                'table-header-employee': 'Employé',
+                'table-header-fault': 'Faute',
+                'table-header-sanction': 'Sanction',
+                'table-header-duration': 'Durée',
+                'table-header-status': 'Statut',
+                
+                // Tabs
+                'tab-dashboard': 'Tableau de bord',
+                'tab-employees': 'Employés',
+                'tab-sanctions': 'Sanctions',
+                'tab-history': 'Historique',
+                'tab-reminders': 'Rappels',
+                
+                // Employee section
+                'search-matricule-label': 'Rechercher par Matricule',
+                'search-btn-text': 'Rechercher',
+                'employee-result-title': 'Résultat de la recherche',
+                'employee-management-title': 'Gestion des Employés',
+                'import-json-label': 'Importer des Employés (JSON)',
+                'export-employees-text': 'Exporter',
+                'add-employee-text': 'Ajouter un Employé',
+                'filter-employee-label': 'Filtre rapide',
+                
+                // Employee table
+                'col-matricule': 'Matricule',
+                'col-nom': 'Nom',
+                'col-prenom': 'Prénom',
+                'col-poste': 'Poste',
+                'col-actions': 'Actions',
+                
+                // Sanctions section
+                'search-faute-label': 'Rechercher une Faute',
+                'search-faute-btn-text': 'Rechercher',
+                'sanction-result-title': 'Résultat de la recherche',
+                'create-decision-text': 'Créer Décision',
+                'sanctions-management-title': 'Gestion des Sanctions',
+                'import-excel-label': 'Importer des Sanctions (Excel)',
+                'export-sanctions-text': 'Exporter',
+                'export-template-text': 'Exporter Modèle Excel',
+                'filter-sanction-label': 'Filtre rapide',
+                'col-faute': 'Faute',
+                'col-degre': 'Degré',
+                'col-sanction': 'Sanction',
+                
+                // History section
+                'history-title': 'Historique des Sanctions par Employé',
+                'history-employee-label': 'Sélectionner un Employé',
+                'view-history-text': 'Afficher',
+                'export-history-text': 'Exporter Excel',
+                'history-for-label': 'Sanctions pour:',
+                'no-history-text': 'Aucune sanction trouvée pour cet employé.',
+                'history-col-matricule': 'Matricule',
+                'history-col-nom': 'Nom',
+                'history-col-prenom': 'Prénom',
+                'history-col-reference': 'Référence',
+                'history-col-date': 'Date',
+                'history-col-motif': 'Motif',
+                'history-col-faute': 'Faute',
+                'history-col-sanction': 'Sanction',
+                'history-col-duree': 'Durée',
+                'history-col-debut': 'Date Début',
+                'history-col-reprise': 'Date Reprise',
+                
+                // Reminders section
+                'reminders-title': 'Rappels et Notifications',
+                'reminders-description': 'Liste des rappels pour les fins de sanctions et les retours d\'employés',
+                'mark-read-text': 'Marquer tout comme lu',
+                
+                // Decision form
+                'decision-form-title': 'Formulaire de Décision de Sanction',
+                'decision-employee-label': 'Sélectionner un Employé',
+                'decision-date-label': 'Date de la Décision',
+                'decision-reference-label': 'Numéro de Référence',
+                'auto-reference-text': 'Générer automatiquement',
+                'decision-effective-date-label': 'Date Début Sanction',
+                'decision-duree-label': 'Durée de la Sanction (jours)',
+                'decision-return-date-label': 'Date de Reprise',
+                'decision-motif-label': 'Motif',
+                'decision-faute-label': 'Faute',
+                'decision-sanction-label': 'Sanction Appliquée',
+                'decision-manquements-label': 'Manquements constatés',
+                'decision-rh-name-label': 'Nom du Responsable RH',
+                'cancel-decision-text': 'Annuler',
+                'preview-decision-text': 'Aperçu',
+                'save-decision-text': 'Enregistrer et Imprimer',
+                
+                // Decision preview
+                'back-preview-text': 'Retour',
+                'export-pdf-text': 'Exporter PDF',
+                'print-decision-text': 'Imprimer',
+                'toggle-language-text': 'Version Arabe',
+                
+                // Employee modal
+                'add-employee-title': 'Ajouter un Employé',
+                'edit-employee-title': 'Modifier un Employé',
+                'employee-matricule-label': 'Matricule',
+                'employee-nom-label': 'Nom',
+                'employee-prenom-label': 'Prénom',
+                'employee-poste-label': 'Poste',
+                'cancel-employee-text': 'Annuler',
+                'save-employee-text': 'Enregistrer',
+                'duplicate-matricule-text': 'Ce matricule existe déjà',
+                
+                // Status messages
+                'active-status': 'En cours',
+                'completed-status': 'Terminée',
+                'upcoming-status': 'À venir',
+                
+                // Buttons and actions
+                'edit-button': 'Modifier',
+                'delete-button': 'Supprimer',
+                'view-button': 'Voir',
+                'close-button': 'Fermer',
+                'confirm-button': 'Confirmer',
+                'cancel-button': 'Annuler',
+            },
+            'ar': {
+                // General
+                'employees-label': 'الموظفين',
+                'active-sanctions-label': 'العقوبات الحالية',
+                'total-decisions-label': 'القرارات الإجمالية',
+                'sanctions-by-degree-title': 'العقوبات حسب الدرجة',
+                'sanctions-by-month-title': 'العقوبات حسب الشهر',
+                'recent-sanctions-title': 'العقوبات الأخيرة',
+                'dashboard-title': 'لوحة المؤشرات',
+                
+                // Table headers
+                'table-header-date': 'التاريخ',
+                'table-header-employee': 'الموظف',
+                'table-header-fault': 'المخالفة',
+                'table-header-sanction': 'العقوبة',
+                'table-header-duration': 'المدة',
+                'table-header-status': 'الحالة',
+                
+                // Tabs
+                'tab-dashboard': 'لوحة المؤشرات',
+                'tab-employees': 'الموظفين',
+                'tab-sanctions': 'العقوبات',
+                'tab-history': 'السجل',
+                'tab-reminders': 'التذكيرات',
+                
+                // Employee section
+                'search-matricule-label': 'البحث برقم التسجيل',
+                'search-btn-text': 'بحث',
+                'employee-result-title': 'نتائج البحث',
+                'employee-management-title': 'إدارة الموظفين',
+                'import-json-label': 'استيراد الموظفين (JSON)',
+                'export-employees-text': 'تصدير',
+                'add-employee-text': 'إضافة موظف',
+                'filter-employee-label': 'تصفية سريعة',
+                
+                // Employee table
+                'col-matricule': 'رقم التسجيل',
+                'col-nom': 'اللقب',
+                'col-prenom': 'الاسم',
+                'col-poste': 'المنصب',
+                'col-actions': 'الإجراءات',
+                
+                // Sanctions section
+                'search-faute-label': 'البحث عن مخالفة',
+                'search-faute-btn-text': 'بحث',
+                'sanction-result-title': 'نتائج البحث',
+                'create-decision-text': 'إنشاء قرار',
+                'sanctions-management-title': 'إدارة العقوبات',
+                'import-excel-label': 'استيراد العقوبات (Excel)',
+                'export-sanctions-text': 'تصدير',
+                'export-template-text': 'تصدير نموذج Excel',
+                'filter-sanction-label': 'تصفية سريعة',
+                'col-faute': 'المخالفة',
+                'col-degre': 'الدرجة',
+                'col-sanction': 'العقوبة',
+                
+                // History section
+                'history-title': 'سجل العقوبات حسب الموظف',
+                'history-employee-label': 'اختيار موظف',
+                'view-history-text': 'عرض',
+                'export-history-text': 'تصدير Excel',
+                'history-for-label': 'العقوبات لـ:',
+                'no-history-text': 'لم يتم العثور على عقوبات لهذا الموظف.',
+                'history-col-matricule': 'رقم التسجيل',
+                'history-col-nom': 'اللقب',
+                'history-col-prenom': 'الاسم',
+                'history-col-reference': 'المرجع',
+                'history-col-date': 'التاريخ',
+                'history-col-motif': 'السبب',
+                'history-col-faute': 'المخالفة',
+                'history-col-sanction': 'العقوبة',
+                'history-col-duree': 'المدة',
+                'history-col-debut': 'تاريخ البداية',
+                'history-col-reprise': 'تاريخ العودة',
+                
+                // Reminders section
+                'reminders-title': 'التذكيرات والإشعارات',
+                'reminders-description': 'قائمة التذكيرات لنهاية العقوبات وعودة الموظفين',
+                'mark-read-text': 'تحديد الكل كمقروء',
+                
+                // Decision form
+                'decision-form-title': 'نموذج قرار العقوبة',
+                'decision-employee-label': 'اختيار موظف',
+                'decision-date-label': 'تاريخ القرار',
+                'decision-reference-label': 'رقم المرجع',
+                'auto-reference-text': 'توليد تلقائي',
+                'decision-effective-date-label': 'تاريخ بدء العقوبة',
+                'decision-duree-label': 'مدة العقوبة (أيام)',
+                'decision-return-date-label': 'تاريخ العودة',
+                'decision-motif-label': 'السبب',
+                'decision-faute-label': 'المخالفة',
+                'decision-sanction-label': 'العقوبة المطبقة',
+                'decision-manquements-label': 'المخالفات المرصودة',
+                'decision-rh-name-label': 'اسم مسؤول الموارد البشرية',
+                'cancel-decision-text': 'إلغاء',
+                'preview-decision-text': 'معاينة',
+                'save-decision-text': 'حفظ وطباعة',
+                
+                // Decision preview
+                'back-preview-text': 'رجوع',
+                'export-pdf-text': 'تصدير PDF',
+                'print-decision-text': 'طباعة',
+                'toggle-language-text': 'النسخة الفرنسية',
+                
+                // Employee modal
+                'add-employee-title': 'إضافة موظف',
+                'edit-employee-title': 'تعديل موظف',
+                'employee-matricule-label': 'رقم التسجيل',
+                'employee-nom-label': 'اللقب',
+                'employee-prenom-label': 'الاسم',
+                'employee-poste-label': 'المنصب',
+                'cancel-employee-text': 'إلغاء',
+                'save-employee-text': 'حفظ',
+                'duplicate-matricule-text': 'رقم التسجيل موجود بالفعل',
+                
+                // Status messages
+                'active-status': 'جارية',
+                'completed-status': 'منتهية',
+                'upcoming-status': 'قادمة',
+                
+                // Buttons and actions
+                'edit-button': 'تعديل',
+                'delete-button': 'حذف',
+                'view-button': 'عرض',
+                'close-button': 'إغلاق',
+                'confirm-button': 'تأكيد',
+                'cancel-button': 'إلغاء',
+            }
+        };
+
+        // Function to update UI language
+        function updateUILanguage(lang) {
+            currentLang = lang;
+            document.getElementById('currentLang').textContent = lang === 'fr' ? 'Français' : 'العربية';
+            
+            // Update direction
+            if (lang === 'ar') {
+                document.body.classList.add('rtl');
+            } else {
+                document.body.classList.remove('rtl');
+            }
+            
+            // Update all translatable elements
+            Object.keys(translations[lang]).forEach(key => {
+                const elements = document.querySelectorAll(`[id="${key}"], [id="${key}-text"]`);
+                elements.forEach(element => {
+                    if (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') {
+                        element.placeholder = translations[lang][key];
+                    } else {
+                        element.textContent = translations[lang][key];
+                    }
+                });
+            });
+            
+            // Update tab texts
+            document.querySelectorAll('.tab-text').forEach(tab => {
+                const tabId = tab.parentElement.id;
+                const translationKey = tabId.replace('tab-', 'tab-');
+                if (translations[lang][translationKey]) {
+                    tab.textContent = translations[lang][translationKey];
+                }
+            });
+            
+            // Save language preference
+            sessionStorage.setItem('language', lang);
+        }
+        
+        // Function to toggle the language dropdown
+        function toggleLanguageDropdown() {
+            const dropdown = document.getElementById('languageDropdown');
+            dropdown.classList.toggle('hidden');
+        }
+        
+        // Function to set UI language
+        function setLanguage(lang) {
+            updateUILanguage(lang);
+            document.getElementById('languageDropdown').classList.add('hidden');
+        }
+        
+        // Toggle language buttons in sanctions table
+        function toggleSanctionsLanguage(lang) {
+            currentSanctionsLang = lang;
+            
+            // Update active button style
+            document.getElementById('sanctions-lang-fr').classList.remove('sanctions-lang-active');
+            document.getElementById('sanctions-lang-ar').classList.remove('sanctions-lang-active');
+            document.getElementById(`sanctions-lang-${lang}`).classList.add('sanctions-lang-active');
+            
+            // Apply RTL direction for Arabic, LTR for French
+            const sanctionsList = document.getElementById('sanctions-list');
+            if (lang === 'ar') {
+                sanctionsList.classList.add('rtl');
+                sanctionsList.classList.remove('ltr');
+            } else {
+                sanctionsList.classList.add('ltr');
+                sanctionsList.classList.remove('rtl');
+            }
+            
+            // Reload sanctions with updated language
+            loadSanctions();
+        }
+        
+        // Function to toggle decision document language
+        function toggleDecisionLanguage() {
+            const frDocument = document.getElementById('decision-document-fr');
+            const arDocument = document.getElementById('decision-document-ar');
+            const toggleButton = document.getElementById('toggle-language-text');
+            
+            if (currentPreviewLang === 'fr') {
+                // Switch to Arabic
+                frDocument.classList.add('hidden');
+                arDocument.classList.remove('hidden');
+                toggleButton.textContent = translations[currentLang]['toggle-language-text-fr'] || 'Version Française';
+                currentPreviewLang = 'ar';
+            } else {
+                // Switch to French
+                arDocument.classList.add('hidden');
+                frDocument.classList.remove('hidden');
+                toggleButton.textContent = translations[currentLang]['toggle-language-text-ar'] || 'Version Arabe';
+                currentPreviewLang = 'fr';
+            }
+        }
         
         // Initial data
         let employees = [
@@ -406,65 +1324,750 @@
             { matricule: "112", nom: "BENHAMMADA", prenom: "SOFIANE", poste: "Agent polyvalent" }
         ];
         
+        // Updated sanctions with both French and Arabic versions
         let sanctions = [
             // Fautes de degré 1
-            { faute: "عدم احترام ساعات العمل", degre: "1", sanction: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام" },
-            { faute: "الوصول المتأخر أكثر من مرتين في الشهر دون سبب", degre: "1", sanction: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام" },
-            { faute: "التأخر عن استئناف العمل بعد أوقات الراحة", degre: "1", sanction: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام" },
-            { faute: "الغياب غير الشرعي من يوم واحد (01) إلى يومين (02)", degre: "1", sanction: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام" },
-            { faute: "ترك منصب العمل بصفة مؤقتة وقصيرة بدون رخصة وبدون سبب مشروع", degre: "1", sanction: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام" },
-            { faute: "الرفض غير المبرر لدعوة الشركة لأداء عمل استعجالي خلال يوم عطلة قانونية أو يوم الراحة", degre: "1", sanction: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام" },
-            { faute: "التنقل أو التجمع دون سبب في أماكن العمل خلال أوقات العمل", degre: "1", sanction: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام" },
-            { faute: "اللجوء إلى المكاتب الإدارية أثناء أوقات العمل دون سبب مشروع", degre: "1", sanction: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام" },
-            { faute: "استعمال الهاتف الشخصي أو السماعات أثناء أوقات العمل", degre: "1", sanction: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام" },
+            { 
+                faute_fr: "Non-respect des horaires de travail", 
+                faute_ar: "عدم احترام ساعات العمل", 
+                degre: "1", 
+                sanction_fr: "Avertissement écrit / Blâme / Mise à pied de un à trois jours",
+                sanction_ar: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام"
+            },
+            { 
+                faute_fr: "Arrivée tardive plus de deux fois par mois sans motif", 
+                faute_ar: "الوصول المتأخر أكثر من مرتين في الشهر دون سبب", 
+                degre: "1", 
+                sanction_fr: "Avertissement écrit / Blâme / Mise à pied de un à trois jours",
+                sanction_ar: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام"
+            },
+            { 
+                faute_fr: "Retard à la reprise du travail après les pauses", 
+                faute_ar: "التأخر عن استئناف العمل بعد أوقات الراحة", 
+                degre: "1", 
+                sanction_fr: "Avertissement écrit / Blâme / Mise à pied de un à trois jours",
+                sanction_ar: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام"
+            },
+            { 
+                faute_fr: "Absence non justifiée d'un (01) à deux (02) jours", 
+                faute_ar: "الغياب غير الشرعي من يوم واحد (01) إلى يومين (02)", 
+                degre: "1", 
+                sanction_fr: "Avertissement écrit / Blâme / Mise à pied de un à trois jours",
+                sanction_ar: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام"
+            },
+            { 
+                faute_fr: "Abandon temporaire et bref du poste de travail sans autorisation et sans motif légitime", 
+                faute_ar: "ترك منصب العمل بصفة مؤقتة وقصيرة بدون رخصة وبدون سبب مشروع", 
+                degre: "1", 
+                sanction_fr: "Avertissement écrit / Blâme / Mise à pied de un à trois jours",
+                sanction_ar: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام"
+            },
+            { 
+                faute_fr: "Refus non justifié de répondre à une demande de l'entreprise pour un travail urgent pendant un jour férié ou un jour de repos", 
+                faute_ar: "الرفض غير المبرر لدعوة الشركة لأداء عمل استعجالي خلال يوم عطلة قانونية أو يوم الراحة", 
+                degre: "1", 
+                sanction_fr: "Avertissement écrit / Blâme / Mise à pied de un à trois jours",
+                sanction_ar: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام"
+            },
+            { 
+                faute_fr: "Déplacement ou rassemblement sans raison sur le lieu de travail pendant les heures de travail", 
+                faute_ar: "التنقل أو التجمع دون سبب في أماكن العمل خلال أوقات العمل", 
+                degre: "1", 
+                sanction_fr: "Avertissement écrit / Blâme / Mise à pied de un à trois jours",
+                sanction_ar: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام"
+            },
+            { 
+                faute_fr: "Recours aux bureaux administratifs pendant les heures de travail sans motif légitime", 
+                faute_ar: "اللجوء إلى المكاتب الإدارية أثناء أوقات العمل دون سبب مشروع", 
+                degre: "1", 
+                sanction_fr: "Avertissement écrit / Blâme / Mise à pied de un à trois jours",
+                sanction_ar: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام"
+            },
+            { 
+                faute_fr: "Utilisation du téléphone personnel ou d'écouteurs pendant les heures de travail", 
+                faute_ar: "استعمال الهاتف الشخصي أو السماعات أثناء أوقات العمل", 
+                degre: "1", 
+                sanction_fr: "Avertissement écrit / Blâme / Mise à pied de un à trois jours",
+                sanction_ar: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام"
+            },
             
             // Fautes de degré 2
-            { faute: "حالة العودة لخطأ من الدرجة الأولى تمت معاقبته عليه في نفس العام", degre: "2", sanction: "التوقيف عن العمل من أربعة (04) إلى خمسة عشر (15) أيام / الشطب من قائمة التأهيل / تخفيض الرتبة من درجة الى درجتين" },
-            { faute: "غياب الإتقان والفعالية، مع التهاون الواضح عند القيام بالعمل", degre: "2", sanction: "التوقيف عن العمل من أربعة (04) إلى خمسة عشر (15) أيام / الشطب من قائمة التأهيل / تخفيض الرتبة من درجة الى درجتين" },
-            { faute: "النوم خلال أوقات العمل", degre: "2", sanction: "التوقيف عن العمل من أربعة (04) إلى خمسة عشر (15) أيام / الشطب من قائمة التأهيل / تخفيض الرتبة من درجة الى درجتين" },
-            { faute: "تغيير الملابس ونزعها خلال أوقات العمل", degre: "2", sanction: "التوقيف عن العمل من أربعة (04) إلى خمسة عشر (15) أيام / الشطب من قائمة التأهيل / تخفيض الرتبة من درجة الى درجتين" },
-            { faute: "الخروج دون طلب ترخيص من الإدارة", degre: "2", sanction: "التوقيف عن العمل من أربعة (04) إلى خمسة عشر (15) أيام / الشطب من قائمة التأهيل / تخفيض الرتبة من درجة الى درجتين" },
+            { 
+                faute_fr: "Récidive d'une faute du premier degré sanctionnée dans la même année", 
+                faute_ar: "حالة العودة لخطأ من الدرجة الأولى تمت معاقبته عليه في نفس العام", 
+                degre: "2", 
+                sanction_fr: "Mise à pied de quatre (04) à quinze (15) jours / Radiation de la liste de qualification / Rétrogradation d'un à deux échelons",
+                sanction_ar: "التوقيف عن العمل من أربعة (04) إلى خمسة عشر (15) أيام / الشطب من قائمة التأهيل / تخفيض الرتبة من درجة الى درجتين"
+            },
+            { 
+                faute_fr: "Manque de précision et d'efficacité, avec négligence évidente dans l'exécution du travail", 
+                faute_ar: "غياب الإتقان والفعالية، مع التهاون الواضح عند القيام بالعمل", 
+                degre: "2", 
+                sanction_fr: "Mise à pied de quatre (04) à quinze (15) jours / Radiation de la liste de qualification / Rétrogradation d'un à deux échelons",
+                sanction_ar: "التوقيف عن العمل من أربعة (04) إلى خمسة عشر (15) أيام / الشطب من قائمة التأهيل / تخفيض الرتبة من درجة الى درجتين"
+            },
+            { 
+                faute_fr: "Dormir pendant les heures de travail", 
+                faute_ar: "النوم خلال أوقات العمل", 
+                degre: "2", 
+                sanction_fr: "Mise à pied de quatre (04) à quinze (15) jours / Radiation de la liste de qualification / Rétrogradation d'un à deux échelons",
+                sanction_ar: "التوقيف عن العمل من أربعة (04) إلى خمسة عشر (15) أيام / الشطب من قائمة التأهيل / تخفيض الرتبة من درجة الى درجتين"
+            },
+            { 
+                faute_fr: "Changer ou enlever ses vêtements pendant les heures de travail", 
+                faute_ar: "تغيير الملابس ونزعها خلال أوقات العمل", 
+                degre: "2", 
+                sanction_fr: "Mise à pied de quatre (04) à quinze (15) jours / Radiation de la liste de qualification / Rétrogradation d'un à deux échelons",
+                sanction_ar: "التوقيف عن العمل من أربعة (04) إلى خمسة عشر (15) أيام / الشطب من قائمة التأهيل / تخفيض الرتبة من درجة الى درجتين"
+            },
+            { 
+                faute_fr: "Sortir sans demander d'autorisation à l'administration", 
+                faute_ar: "الخروج دون طلب ترخيص من الإدارة", 
+                degre: "2", 
+                sanction_fr: "Mise à pied de quatre (04) à quinze (15) jours / Radiation de la liste de qualification / Rétrogradation d'un à deux échelons",
+                sanction_ar: "التوقيف عن العمل من أربعة (04) إلى خمسة عشر (15) أيام / الشطب من قائمة التأهيل / تخفيض الرتبة من درجة الى درجتين"
+            },
             
             // Fautes de degré 3
-            { faute: "تكرار خطأ من الدرجة الثانية تمت معاقبته عليه في نفس العام", degre: "3", sanction: "التوقيف عن العمل من إحدى عشرة (11) إلى ثلاثين (30) يوما / التنزيل الى الرتبة السفلى مباشرة / التسريح" },
-            { faute: "السرقة", degre: "3", sanction: "التوقيف عن العمل من إحدى عشرة (11) إلى ثلاثين (30) يوما / التنزيل الى الرتبة السفلى مباشرة / التسريح" },
-            { faute: "القيام بأعمال عنف", degre: "3", sanction: "التوقيف عن العمل من إحدى عشرة (11) إلى ثلاثين (30) يوما / التنزيل الى الرتبة السفلى مباشرة / التسريح" },
-            { faute: "التحرش الجنسي أو التحرش المعنوي", degre: "3", sanction: "التوقيف عن العمل من إحدى عشرة (11) إلى ثلاثين (30) يوما / التنزيل الى الرتبة السفلى مباشرة / التسريح" },
-            { faute: "استغلال معلومات العملاء أو التواصل معهم لأغراض شخصية", degre: "3", sanction: "التوقيف عن العمل من إحدى عشرة (11) إلى ثلاثين (30) يوما / التنزيل الى الرتبة السفلى مباشرة / التسريح" }
+            { 
+                faute_fr: "Récidive d'une faute du deuxième degré sanctionnée dans la même année", 
+                faute_ar: "تكرار خطأ من الدرجة الثانية تمت معاقبته عليه في نفس العام", 
+                degre: "3", 
+                sanction_fr: "Mise à pied de onze (11) à trente (30) jours / Rétrogradation à l'échelon immédiatement inférieur / Licenciement",
+                sanction_ar: "التوقيف عن العمل من إحدى عشرة (11) إلى ثلاثين (30) يوما / التنزيل الى الرتبة السفلى مباشرة / التسريح"
+            },
+            { 
+                faute_fr: "Vol", 
+                faute_ar: "السرقة", 
+                degre: "3", 
+                sanction_fr: "Mise à pied de onze (11) à trente (30) jours / Rétrogradation à l'échelon immédiatement inférieur / Licenciement",
+                sanction_ar: "التوقيف عن العمل من إحدى عشرة (11) إلى ثلاثين (30) يوما / التنزيل الى الرتبة السفلى مباشرة / التسريح"
+            },
+            { 
+                faute_fr: "Actes de violence", 
+                faute_ar: "القيام بأعمال عنف", 
+                degre: "3", 
+                sanction_fr: "Mise à pied de onze (11) à trente (30) jours / Rétrogradation à l'échelon immédiatement inférieur / Licenciement",
+                sanction_ar: "التوقيف عن العمل من إحدى عشرة (11) إلى ثلاثين (30) يوما / التنزيل الى الرتبة السفلى مباشرة / التسريح"
+            },
+            { 
+                faute_fr: "Harcèlement sexuel ou moral", 
+                faute_ar: "التحرش الجنسي أو التحرش المعنوي", 
+                degre: "3", 
+                sanction_fr: "Mise à pied de onze (11) à trente (30) jours / Rétrogradation à l'échelon immédiatement inférieur / Licenciement",
+                sanction_ar: "التوقيف عن العمل من إحدى عشرة (11) إلى ثلاثين (30) يوما / التنزيل الى الرتبة السفلى مباشرة / التسريح"
+            },
+            { 
+                faute_fr: "Exploitation des informations clients ou communication avec eux à des fins personnelles", 
+                faute_ar: "استغلال معلومات العملاء أو التواصل معهم لأغراض شخصية", 
+                degre: "3", 
+                sanction_fr: "Mise à pied de onze (11) à trente (30) jours / Rétrogradation à l'échelon immédiatement inférieur / Licenciement",
+                sanction_ar: "التوقيف عن العمل من إحدى عشرة (11) إلى ثلاثين (30) يوما / التنزيل الى الرتبة السفلى مباشرة / التسريح"
+            }
         ];
         
+        // Decision history storage
+        let decisions = [];
+        
+        // Reminders storage
+        let reminders = [];
+        
+        // Utility Functions
+        // Debounce function for input events
+        function debounce(func, wait) {
+            let timeout;
+            return function(...args) {
+                const context = this;
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(context, args), wait);
+            };
+        }
+        
+        // Show notification function
+        function showNotification(message, type = 'success') {
+            const container = document.getElementById('notification-container');
+            const notification = document.createElement('div');
+            
+            let bgColor, textColor, icon;
+            switch(type) {
+                case 'error':
+                    bgColor = 'bg-red-500';
+                    textColor = 'text-white';
+                    icon = '<i class="fas fa-exclamation-circle mr-2"></i>';
+                    break;
+                case 'warning':
+                    bgColor = 'bg-yellow-500';
+                    textColor = 'text-gray-900';
+                    icon = '<i class="fas fa-exclamation-triangle mr-2"></i>';
+                    break;
+                case 'info':
+                    bgColor = 'bg-blue-500';
+                    textColor = 'text-white';
+                    icon = '<i class="fas fa-info-circle mr-2"></i>';
+                    break;
+                default: // success
+                    bgColor = 'bg-green-500';
+                    textColor = 'text-white';
+                    icon = '<i class="fas fa-check-circle mr-2"></i>';
+            }
+            
+            notification.className = `${bgColor} ${textColor} p-4 rounded-lg shadow-lg mb-3 alert flex items-center`;
+            notification.setAttribute('role', 'alert');
+            notification.innerHTML = `${icon} ${message}`;
+            
+            container.appendChild(notification);
+            
+            // Remove notification after 5 seconds
+            setTimeout(() => {
+                notification.remove();
+            }, 5000);
+        }
+        
+        // Check for duplicate matricule
+        function isDuplicateMatricule(matricule, currentIndex = -1) {
+            return employees.some((emp, index) => 
+                emp.matricule === matricule && index !== currentIndex
+            );
+        }
+        
+        // Format date for display
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleDateString(currentLang === 'fr' ? 'fr-FR' : 'ar-DZ', { 
+                day: '2-digit', 
+                month: '2-digit', 
+                year: 'numeric' 
+            });
+        }
+        
+        // Calculate end date based on start date and duration
+        function calculateEndDate(startDate, durationDays) {
+            const date = new Date(startDate);
+            date.setDate(date.getDate() + parseInt(durationDays) - 1);
+            return date;
+        }
+        
+        // Calculate return date (end date + 1 day)
+        function calculateReturnDate(startDate, durationDays) {
+            const date = new Date(startDate);
+            date.setDate(date.getDate() + parseInt(durationDays));
+            return date;
+        }
+        
+        // Get the highest reference number
+        function getNextReferenceNumber() {
+            if (decisions.length === 0) return 1;
+            
+            const maxRef = decisions.reduce((max, decision) => {
+                const refParts = decision.reference.split('/');
+                const refNum = parseInt(refParts[0]);
+                return refNum > max ? refNum : max;
+            }, 0);
+            
+            return maxRef + 1;
+        }
+        
+        // Validate form input with regex
+        function validateInput(input, regex, errorMessage) {
+            const value = input.value.trim();
+            const isValid = regex.test(value);
+            
+            const helpElement = document.getElementById(`${input.id}-help`);
+            if (!isValid && value !== '') {
+                input.classList.add('border-red-500');
+                helpElement.classList.add('text-red-500');
+                helpElement.textContent = errorMessage;
+                return false;
+            } else {
+                input.classList.remove('border-red-500');
+                helpElement.classList.remove('text-red-500');
+                helpElement.textContent = input.getAttribute('aria-describedby') ? 
+                    document.getElementById(input.getAttribute('aria-describedby')).textContent : '';
+                return true;
+            }
+        }
+        
+        // Function to check if a sanction is active
+        function isSanctionActive(decision) {
+            const today = new Date();
+            const startDate = new Date(decision.dateEffective);
+            const endDate = calculateEndDate(decision.dateEffective, decision.duree);
+            
+            return today >= startDate && today <= endDate;
+        }
+        
+        // Function to check if a sanction is upcoming
+        function isSanctionUpcoming(decision) {
+            const today = new Date();
+            const startDate = new Date(decision.dateEffective);
+            
+            return startDate > today;
+        }
+        
+        // Function to get sanction status
+        function getSanctionStatus(decision) {
+            if (isSanctionActive(decision)) {
+                return 'active';
+            } else if (isSanctionUpcoming(decision)) {
+                return 'upcoming';
+            } else {
+                return 'completed';
+            }
+        }
+        
+        // Function to generate reminders for sanctions
+        function generateReminders() {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            const newReminders = [];
+            
+            // Check for sanctions that are ending soon (within 2 days)
+            decisions.forEach(decision => {
+                const returnDate = new Date(decision.dateRetour);
+                returnDate.setHours(0, 0, 0, 0);
+                
+                const daysDiff = Math.floor((returnDate - today) / (1000 * 60 * 60 * 24));
+                
+                if (daysDiff >= 0 && daysDiff <= 2) {
+                    // Check if this reminder already exists
+                    const existingReminder = reminders.some(r => 
+                        r.type === 'return' && 
+                        r.decisionId === decision.reference && 
+                        r.date === decision.dateRetour
+                    );
+                    
+                    if (!existingReminder) {
+                        const employee = employees.find(emp => emp.matricule === decision.matricule);
+                        
+                        newReminders.push({
+                            id: `return-${decision.reference}`,
+                            type: 'return',
+                            decisionId: decision.reference,
+                            date: decision.dateRetour,
+                            message: `${employee ? employee.nom + ' ' + employee.prenom : 'Employé'} doit reprendre le travail le ${formatDate(decision.dateRetour)}`,
+                            matricule: decision.matricule,
+                            read: false,
+                            createdAt: new Date().toISOString()
+                        });
+                    }
+                }
+            });
+            
+            // Add any new reminders to the list
+            if (newReminders.length > 0) {
+                reminders = [...reminders, ...newReminders];
+                sessionStorage.setItem('reminders', JSON.stringify(reminders));
+            }
+            
+            // Update the reminders count
+            updateRemindersCount();
+        }
+        
+        // Function to update reminders count badge
+        function updateRemindersCount() {
+            const unreadCount = reminders.filter(r => !r.read).length;
+            const badge = document.getElementById('rappels-badge');
+            
+            if (unreadCount > 0) {
+                badge.textContent = unreadCount > 9 ? '9+' : unreadCount;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+        
+        // Function to mark all reminders as read
+        function markAllRemindersAsRead() {
+            reminders.forEach(reminder => {
+                reminder.read = true;
+            });
+            
+            sessionStorage.setItem('reminders', JSON.stringify(reminders));
+            updateRemindersCount();
+            loadReminders();
+            
+            showNotification(currentLang === 'fr' ? 'Tous les rappels ont été marqués comme lus' : 'تم تحديد جميع التذكيرات كمقروءة', 'success');
+        }
+        
+        // Function to load reminders
+        function loadReminders() {
+            const container = document.getElementById('reminders-container');
+            const noReminders = document.getElementById('no-reminders');
+            
+            container.innerHTML = '';
+            
+            if (reminders.length === 0) {
+                noReminders.classList.remove('hidden');
+                return;
+            }
+            
+            noReminders.classList.add('hidden');
+            
+            // Sort reminders by date (most recent first) and read status (unread first)
+            const sortedReminders = [...reminders].sort((a, b) => {
+                // First compare read status
+                if (a.read !== b.read) {
+                    return a.read ? 1 : -1;
+                }
+                
+                // Then compare date
+                return new Date(b.createdAt) - new Date(a.createdAt);
+            });
+            
+            sortedReminders.forEach(reminder => {
+                const card = document.createElement('div');
+                card.className = `bg-white dark:bg-gray-700 p-4 rounded-lg shadow border ${reminder.read ? 'border-gray-200 dark:border-gray-600' : 'border-blue-300 dark:border-blue-600'} relative`;
+                
+                let iconClass, bgColor;
+                switch (reminder.type) {
+                    case 'return':
+                        iconClass = 'fa-calendar-check';
+                        bgColor = 'bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300';
+                        break;
+                    case 'warning':
+                        iconClass = 'fa-exclamation-triangle';
+                        bgColor = 'bg-yellow-100 dark:bg-yellow-900 text-yellow-600 dark:text-yellow-300';
+                        break;
+                    default:
+                        iconClass = 'fa-bell';
+                        bgColor = 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300';
+                }
+                
+                card.innerHTML = `
+                    <div class="flex">
+                        <div class="rounded-full ${bgColor} p-3 mr-4">
+                            <i class="fas ${iconClass}"></i>
+                        </div>
+                        <div class="flex-1">
+                            <p class="font-medium">${reminder.message}</p>
+                            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">${formatDate(reminder.date)}</p>
+                        </div>
+                        ${!reminder.read ? `
+                        <button class="mark-read-btn p-2 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-full" data-id="${reminder.id}">
+                            <i class="fas fa-check text-green-600 dark:text-green-400"></i>
+                        </button>
+                        ` : ''}
+                    </div>
+                `;
+                
+                container.appendChild(card);
+                
+                // Add event listener to mark as read button
+                const markReadBtn = card.querySelector('.mark-read-btn');
+                if (markReadBtn) {
+                    markReadBtn.addEventListener('click', function() {
+                        const reminderId = this.dataset.id;
+                        const reminderIndex = reminders.findIndex(r => r.id === reminderId);
+                        
+                        if (reminderIndex !== -1) {
+                            reminders[reminderIndex].read = true;
+                            sessionStorage.setItem('reminders', JSON.stringify(reminders));
+                            updateRemindersCount();
+                            loadReminders();
+                        }
+                    });
+                }
+            });
+        }
+        
+        // Initialize dashboard charts
+        function initDashboard() {
+            updateDashboardStats();
+            initSanctionsByDegreeChart();
+            initSanctionsByMonthChart();
+            loadRecentSanctions();
+        }
+        
+        function updateDashboardStats() {
+            document.getElementById('employees-count').textContent = employees.length;
+            document.getElementById('total-decisions-count').textContent = decisions.length;
+            
+            const activeSanctions = decisions.filter(decision => isSanctionActive(decision));
+            document.getElementById('active-sanctions-count').textContent = activeSanctions.length;
+        }
+        
+        // Initialize sanctions by degree chart
+        function initSanctionsByDegreeChart() {
+            const ctx = document.getElementById('sanctionsByDegreeChart').getContext('2d');
+            
+            // Count sanctions by degree
+            const counts = [0, 0, 0]; // for degrees 1, 2, 3
+            
+            decisions.forEach(decision => {
+                const sanction = sanctions.find(s => 
+                    (currentSanctionsLang === 'fr' && s.faute_fr === decision.faute) || 
+                    (currentSanctionsLang === 'ar' && s.faute_ar === decision.faute)
+                );
+                
+                if (sanction) {
+                    const degree = parseInt(sanction.degre);
+                    if (degree >= 1 && degree <= 3) {
+                        counts[degree - 1]++;
+                    }
+                }
+            });
+            
+            // Create the chart
+            const sanctionsByDegreeChart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: ['Degré 1', 'Degré 2', 'Degré 3'],
+                    datasets: [{
+                        data: counts,
+                        backgroundColor: [
+                            'rgba(54, 162, 235, 0.5)',
+                            'rgba(255, 159, 64, 0.5)',
+                            'rgba(255, 99, 132, 0.5)'
+                        ],
+                        borderColor: [
+                            'rgba(54, 162, 235, 1)',
+                            'rgba(255, 159, 64, 1)',
+                            'rgba(255, 99, 132, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: document.documentElement.classList.contains('dark') ? '#fff' : '#333'
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Update chart when dark mode changes
+            document.getElementById('darkModeToggle').addEventListener('change', function() {
+                const textColor = document.documentElement.classList.contains('dark') ? '#fff' : '#333';
+                sanctionsByDegreeChart.options.plugins.legend.labels.color = textColor;
+                sanctionsByDegreeChart.update();
+            });
+        }
+        
+        // Initialize sanctions by month chart
+        function initSanctionsByMonthChart() {
+            const ctx = document.getElementById('sanctionsByMonthChart').getContext('2d');
+            
+            // Get sanctions count by month for the current year
+            const currentYear = new Date().getFullYear();
+            const monthlyCounts = Array(12).fill(0);
+            
+            decisions.forEach(decision => {
+                const decisionDate = new Date(decision.date);
+                if (decisionDate.getFullYear() === currentYear) {
+                    monthlyCounts[decisionDate.getMonth()]++;
+                }
+            });
+            
+            // Month labels (can be translated)
+            const monthLabels = currentLang === 'fr' ? 
+                ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'] :
+                ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+            
+            // Create the chart
+            const sanctionsByMonthChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: monthLabels,
+                    datasets: [{
+                        label: currentLang === 'fr' ? 'Sanctions' : 'العقوبات',
+                        data: monthlyCounts,
+                        backgroundColor: 'rgba(93, 92, 222, 0.5)',
+                        borderColor: 'rgba(93, 92, 222, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1,
+                                color: document.documentElement.classList.contains('dark') ? '#fff' : '#333'
+                            },
+                            grid: {
+                                color: document.documentElement.classList.contains('dark') ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                color: document.documentElement.classList.contains('dark') ? '#fff' : '#333'
+                            },
+                            grid: {
+                                color: document.documentElement.classList.contains('dark') ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: document.documentElement.classList.contains('dark') ? '#fff' : '#333'
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Update chart when dark mode changes
+            document.getElementById('darkModeToggle').addEventListener('change', function() {
+                const textColor = document.documentElement.classList.contains('dark') ? '#fff' : '#333';
+                const gridColor = document.documentElement.classList.contains('dark') ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+                
+                sanctionsByMonthChart.options.scales.y.ticks.color = textColor;
+                sanctionsByMonthChart.options.scales.x.ticks.color = textColor;
+                sanctionsByMonthChart.options.scales.y.grid.color = gridColor;
+                sanctionsByMonthChart.options.scales.x.grid.color = gridColor;
+                sanctionsByMonthChart.options.plugins.legend.labels.color = textColor;
+                
+                sanctionsByMonthChart.update();
+            });
+        }
+        
+        // Load recent sanctions for dashboard
+        function loadRecentSanctions() {
+            const tableBody = document.getElementById('recent-sanctions-table');
+            tableBody.innerHTML = '';
+            
+            // Sort decisions by date (most recent first)
+            const recentDecisions = [...decisions]
+                .sort((a, b) => new Date(b.date) - new Date(a.date))
+                .slice(0, 5); // Take 5 most recent
+            
+            if (recentDecisions.length === 0) {
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="py-4 text-center text-gray-500 dark:text-gray-400">
+                            ${currentLang === 'fr' ? 'Aucune sanction récente' : 'لا توجد عقوبات حديثة'}
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            recentDecisions.forEach(decision => {
+                const employee = employees.find(emp => emp.matricule === decision.matricule);
+                const status = getSanctionStatus(decision);
+                
+                let statusClass, statusText;
+                switch (status) {
+                    case 'active':
+                        statusClass = 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200';
+                        statusText = currentLang === 'fr' ? 'En cours' : 'جارية';
+                        break;
+                    case 'upcoming':
+                        statusClass = 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200';
+                        statusText = currentLang === 'fr' ? 'À venir' : 'قادمة';
+                        break;
+                    default:
+                        statusClass = 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200';
+                        statusText = currentLang === 'fr' ? 'Terminée' : 'منتهية';
+                }
+                
+                const row = document.createElement('tr');
+                row.className = 'border-b dark:border-gray-600';
+                row.innerHTML = `
+                    <td class="py-2 px-3">${formatDate(decision.date)}</td>
+                    <td class="py-2 px-3">${employee ? `${employee.nom} ${employee.prenom}` : 'N/A'}</td>
+                    <td class="py-2 px-3">${decision.faute}</td>
+                    <td class="py-2 px-3">${decision.sanction}</td>
+                    <td class="py-2 px-3">${decision.duree} ${currentLang === 'fr' ? 'jours' : 'أيام'}</td>
+                    <td class="py-2 px-3">
+                        <span class="px-2 py-1 rounded-full text-xs ${statusClass}">
+                            ${statusText}
+                        </span>
+                    </td>
+                `;
+                
+                tableBody.appendChild(row);
+            });
+        }
+        
         // DOM Elements
+        const tabDashboard = document.getElementById('tab-dashboard');
         const tabEmployes = document.getElementById('tab-employes');
         const tabSanctions = document.getElementById('tab-sanctions');
+        const tabHistorique = document.getElementById('tab-historique');
+        const tabRappels = document.getElementById('tab-rappels');
+        const sectionDashboard = document.getElementById('section-dashboard');
         const sectionEmployes = document.getElementById('section-employes');
         const sectionSanctions = document.getElementById('section-sanctions');
+        const sectionHistorique = document.getElementById('section-historique');
+        const sectionRappels = document.getElementById('section-rappels');
         
-        // Tab Switching
-        tabEmployes.addEventListener('click', () => {
-            tabEmployes.classList.add('tab-active');
-            tabSanctions.classList.remove('tab-active');
-            sectionEmployes.classList.remove('hidden');
-            sectionSanctions.classList.add('hidden');
-            document.getElementById('decision-form').classList.add('hidden');
-            document.getElementById('print-preview').classList.add('hidden');
-        });
+        // Tab Switching with animation
+        function switchTab(tabId) {
+            // Remove active state from all tabs
+            [tabDashboard, tabEmployes, tabSanctions, tabHistorique, tabRappels].forEach(tab => {
+                tab.classList.remove('tab-active');
+                tab.setAttribute('aria-selected', 'false');
+            });
+            
+            // Hide all sections
+            [sectionDashboard, sectionEmployes, sectionSanctions, sectionHistorique, sectionRappels,
+             document.getElementById('decision-form'), document.getElementById('print-preview')].forEach(section => {
+                if (section) {
+                    section.classList.add('hidden');
+                    section.classList.remove('active');
+                }
+            });
+            
+            // Set active tab and show corresponding section
+            if (tabId === 'tab-dashboard') {
+                tabDashboard.classList.add('tab-active');
+                tabDashboard.setAttribute('aria-selected', 'true');
+                sectionDashboard.classList.remove('hidden');
+                setTimeout(() => sectionDashboard.classList.add('active'), 10);
+                
+                // Initialize dashboard data
+                initDashboard();
+            } else if (tabId === 'tab-employes') {
+                tabEmployes.classList.add('tab-active');
+                tabEmployes.setAttribute('aria-selected', 'true');
+                sectionEmployes.classList.remove('hidden');
+                setTimeout(() => sectionEmployes.classList.add('active'), 10);
+            } else if (tabId === 'tab-sanctions') {
+                tabSanctions.classList.add('tab-active');
+                tabSanctions.setAttribute('aria-selected', 'true');
+                sectionSanctions.classList.remove('hidden');
+                setTimeout(() => sectionSanctions.classList.add('active'), 10);
+            } else if (tabId === 'tab-historique') {
+                tabHistorique.classList.add('tab-active');
+                tabHistorique.setAttribute('aria-selected', 'true');
+                sectionHistorique.classList.remove('hidden');
+                setTimeout(() => sectionHistorique.classList.add('active'), 10);
+            } else if (tabId === 'tab-rappels') {
+                tabRappels.classList.add('tab-active');
+                tabRappels.setAttribute('aria-selected', 'true');
+                sectionRappels.classList.remove('hidden');
+                setTimeout(() => sectionRappels.classList.add('active'), 10);
+                
+                // Mark reminder tab as viewed
+                updateRemindersCount();
+            }
+        }
         
-        tabSanctions.addEventListener('click', () => {
-            tabSanctions.classList.add('tab-active');
-            tabEmployes.classList.remove('tab-active');
-            sectionSanctions.classList.remove('hidden');
-            sectionEmployes.classList.add('hidden');
-            document.getElementById('decision-form').classList.add('hidden');
-            document.getElementById('print-preview').classList.add('hidden');
-        });
+        tabDashboard.addEventListener('click', () => switchTab('tab-dashboard'));
+        tabEmployes.addEventListener('click', () => switchTab('tab-employes'));
+        tabSanctions.addEventListener('click', () => switchTab('tab-sanctions'));
+        tabHistorique.addEventListener('click', () => switchTab('tab-historique'));
+        tabRappels.addEventListener('click', () => switchTab('tab-rappels'));
         
         // Employees Management
         function loadEmployees() {
             const tableBody = document.getElementById('employees-list');
             const employeeSelect = document.getElementById('decision-employee');
+            const historyEmployeeSelect = document.getElementById('history-employee');
             
             tableBody.innerHTML = '';
-            employeeSelect.innerHTML = '<option value="">-- Sélectionner un employé --</option>';
+            employeeSelect.innerHTML = `<option value="">-- ${currentLang === 'fr' ? 'Sélectionner un employé' : 'اختيار موظف'} --</option>`;
+            historyEmployeeSelect.innerHTML = `<option value="">-- ${currentLang === 'fr' ? 'Sélectionner un employé' : 'اختيار موظف'} --</option>`;
+            historyEmployeeSelect.innerHTML += `<option value="all">${currentLang === 'fr' ? 'Tous les employés' : 'جميع الموظفين'}</option>`;
             
             employees.forEach((employee, index) => {
                 const row = document.createElement('tr');
@@ -474,35 +2077,92 @@
                     <td class="py-2 px-4 border-b">${employee.prenom}</td>
                     <td class="py-2 px-4 border-b">${employee.poste}</td>
                     <td class="py-2 px-4 border-b">
-                        <button class="edit-employee bg-blue-500 hover:bg-blue-600 text-white py-1 px-2 rounded text-sm" data-index="${index}">
-                            Modifier
+                        <button class="edit-employee bg-blue-500 hover:bg-blue-600 text-white py-1 px-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 mr-1" data-index="${index}" aria-label="${currentLang === 'fr' ? 'Modifier l\'employé' : 'تعديل الموظف'} ${employee.nom}">
+                            <i class="fas fa-edit"></i>
+                            <span class="ml-1">${currentLang === 'fr' ? 'Modifier' : 'تعديل'}</span>
                         </button>
-                        <button class="delete-employee bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded text-sm" data-index="${index}">
-                            Supprimer
+                        <button class="delete-employee bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50" data-index="${index}" aria-label="${currentLang === 'fr' ? 'Supprimer l\'employé' : 'حذف الموظف'} ${employee.nom}">
+                            <i class="fas fa-trash"></i>
+                            <span class="ml-1">${currentLang === 'fr' ? 'Supprimer' : 'حذف'}</span>
                         </button>
                     </td>
                 `;
                 tableBody.appendChild(row);
                 
+                // Add to employee selects
                 const option = document.createElement('option');
                 option.value = employee.matricule;
                 option.textContent = `${employee.matricule} - ${employee.nom} ${employee.prenom}`;
-                employeeSelect.appendChild(option);
+                option.dataset.nom = employee.nom;
+                option.dataset.prenom = employee.prenom;
+                option.dataset.poste = employee.poste;
+                employeeSelect.appendChild(option.cloneNode(true));
+                historyEmployeeSelect.appendChild(option);
             });
             
             // Add event listeners for edit and delete buttons
             document.querySelectorAll('.edit-employee').forEach(button => {
                 button.addEventListener('click', (e) => {
-                    const index = e.target.dataset.index;
+                    const index = e.target.closest('.edit-employee').dataset.index;
                     editEmployee(index);
                 });
             });
             
             document.querySelectorAll('.delete-employee').forEach(button => {
                 button.addEventListener('click', (e) => {
-                    const index = e.target.dataset.index;
+                    const index = e.target.closest('.delete-employee').dataset.index;
                     deleteEmployee(index);
                 });
+            });
+            
+            // Update dashboard stats
+            if (document.getElementById('section-dashboard').classList.contains('active')) {
+                updateDashboardStats();
+            }
+        }
+        
+        // Function to filter employees table
+        function filterEmployees(searchTerm) {
+            const tableRows = document.querySelectorAll('#employees-list tr');
+            const searchLower = searchTerm.toLowerCase();
+            
+            tableRows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                if (text.includes(searchLower)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+        
+        // Function to filter sanctions table
+        function filterSanctions(searchTerm) {
+            const tableRows = document.querySelectorAll('#sanctions-list tr');
+            const searchLower = searchTerm.toLowerCase();
+            
+            tableRows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                if (text.includes(searchLower)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+        
+        // Function to filter history cards
+        function filterHistory(searchTerm) {
+            const historyCards = document.querySelectorAll('#employee-history .history-card');
+            const searchLower = searchTerm.toLowerCase();
+            
+            historyCards.forEach(card => {
+                const text = card.textContent.toLowerCase();
+                if (text.includes(searchLower)) {
+                    card.style.display = '';
+                } else {
+                    card.style.display = 'none';
+                }
             });
         }
         
@@ -512,22 +2172,43 @@
             const detailsDiv = document.getElementById('employee-details');
             
             if (!matricule) {
-                alert('Veuillez entrer un matricule');
+                showNotification(currentLang === 'fr' ? 'Veuillez entrer un matricule' : 'الرجاء إدخال رقم التسجيل', 'warning');
                 return;
             }
             
             const employee = employees.find(emp => emp.matricule === matricule);
             
             if (employee) {
+                // Check for history
+                const employeeDecisions = decisions.filter(d => d.matricule === matricule);
+                
                 detailsDiv.innerHTML = `
-                    <p><strong>Matricule:</strong> ${employee.matricule}</p>
-                    <p><strong>Nom:</strong> ${employee.nom}</p>
-                    <p><strong>Prénom:</strong> ${employee.prenom}</p>
-                    <p><strong>Poste:</strong> ${employee.poste}</p>
+                    <p><strong>${currentLang === 'fr' ? 'Matricule' : 'رقم التسجيل'}:</strong> ${employee.matricule}</p>
+                    <p><strong>${currentLang === 'fr' ? 'Nom' : 'اللقب'}:</strong> ${employee.nom}</p>
+                    <p><strong>${currentLang === 'fr' ? 'Prénom' : 'الاسم'}:</strong> ${employee.prenom}</p>
+                    <p><strong>${currentLang === 'fr' ? 'Poste' : 'المنصب'}:</strong> ${employee.poste}</p>
+                    ${employeeDecisions.length > 0 ? 
+                      `<p class="mt-2"><strong>${currentLang === 'fr' ? 'Sanctions' : 'العقوبات'}:</strong> ${employeeDecisions.length} ${currentLang === 'fr' ? 'décision(s) enregistrée(s)' : 'قرار(ات) مسجلة'}</p>` : 
+                      `<p class="mt-2 text-gray-500">${currentLang === 'fr' ? 'Aucune sanction enregistrée' : 'لم يتم تسجيل أي عقوبة'}</p>`}
+                    ${employeeDecisions.length > 0 ? 
+                      `<button id="view-employee-history" class="mt-2 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm focus:outline-none focus:underline" data-matricule="${matricule}">
+                        <i class="fas fa-history mr-1"></i>
+                        ${currentLang === 'fr' ? 'Voir l\'historique des sanctions' : 'عرض سجل العقوبات'}
+                      </button>` : ''}
                 `;
                 resultDiv.classList.remove('hidden');
+                
+                // Add event listener for history button
+                if (employeeDecisions.length > 0) {
+                    document.getElementById('view-employee-history').addEventListener('click', function() {
+                        const matricule = this.dataset.matricule;
+                        document.getElementById('history-employee').value = matricule;
+                        switchTab('tab-historique');
+                        viewEmployeeHistory();
+                    });
+                }
             } else {
-                detailsDiv.innerHTML = `<p class="text-red-500">Aucun employé trouvé avec ce matricule</p>`;
+                detailsDiv.innerHTML = `<p class="text-red-500">${currentLang === 'fr' ? 'Aucun employé trouvé avec ce matricule' : 'لم يتم العثور على موظف بهذا الرقم'}</p>`;
                 resultDiv.classList.remove('hidden');
             }
         }
@@ -539,11 +2220,18 @@
             const nomInput = document.getElementById('employee-nom');
             const prenomInput = document.getElementById('employee-prenom');
             const posteInput = document.getElementById('employee-poste');
+            const duplicateError = document.getElementById('duplicate-matricule-error');
             
             modal.classList.remove('hidden');
+            duplicateError.classList.add('hidden');
+            
+            // Set focus on first input
+            setTimeout(() => {
+                matriculeInput.focus();
+            }, 100);
             
             if (edit && index >= 0) {
-                modalTitle.textContent = 'Modifier un Employé';
+                modalTitle.textContent = currentLang === 'fr' ? 'Modifier un Employé' : 'تعديل موظف';
                 const employee = employees[index];
                 matriculeInput.value = employee.matricule;
                 nomInput.value = employee.nom;
@@ -552,13 +2240,24 @@
                 modal.dataset.index = index;
                 modal.dataset.edit = 'true';
             } else {
-                modalTitle.textContent = 'Ajouter un Employé';
+                modalTitle.textContent = currentLang === 'fr' ? 'Ajouter un Employé' : 'إضافة موظف';
                 matriculeInput.value = '';
                 nomInput.value = '';
                 prenomInput.value = '';
                 posteInput.value = '';
                 modal.dataset.edit = 'false';
             }
+            
+            // Check for duplicate matricule on input
+            matriculeInput.addEventListener('input', function() {
+                if (this.value.trim() !== '') {
+                    const currentIndex = modal.dataset.edit === 'true' ? parseInt(modal.dataset.index) : -1;
+                    const isDuplicate = isDuplicateMatricule(this.value.trim(), currentIndex);
+                    duplicateError.classList.toggle('hidden', !isDuplicate);
+                } else {
+                    duplicateError.classList.add('hidden');
+                }
+            });
         }
         
         function hideEmployeeModal() {
@@ -571,20 +2270,58 @@
             const nom = document.getElementById('employee-nom').value.trim();
             const prenom = document.getElementById('employee-prenom').value.trim();
             const poste = document.getElementById('employee-poste').value.trim();
+            const duplicateError = document.getElementById('duplicate-matricule-error');
+            
+            // Validation
+            let isValid = true;
+            
+            isValid = isValid && validateInput(
+                document.getElementById('employee-matricule'),
+                /^[0-9]+$/,
+                currentLang === 'fr' ? 'Le matricule doit contenir uniquement des chiffres' : 'رقم التسجيل يجب أن يحتوي على أرقام فقط'
+            );
+            
+            isValid = isValid && validateInput(
+                document.getElementById('employee-nom'),
+                /^[A-Za-zÀ-ÖØ-öø-ÿ\s-]+$/,
+                currentLang === 'fr' ? 'Le nom doit contenir uniquement des lettres, espaces et tirets' : 'اللقب يجب أن يحتوي على حروف ومسافات وشرطات فقط'
+            );
+            
+            isValid = isValid && validateInput(
+                document.getElementById('employee-prenom'),
+                /^[A-Za-zÀ-ÖØ-öø-ÿ\s-]+$/,
+                currentLang === 'fr' ? 'Le prénom doit contenir uniquement des lettres, espaces et tirets' : 'الاسم يجب أن يحتوي على حروف ومسافات وشرطات فقط'
+            );
             
             if (!matricule || !nom || !prenom || !poste) {
-                alert('Tous les champs sont obligatoires');
+                showNotification(currentLang === 'fr' ? 'Tous les champs sont obligatoires' : 'جميع الحقول مطلوبة', 'error');
                 return;
             }
             
+            // Check for duplicate matricule
             const isEdit = modal.dataset.edit === 'true';
+            const currentIndex = isEdit ? parseInt(modal.dataset.index) : -1;
+            
+            if (isDuplicateMatricule(matricule, currentIndex)) {
+                duplicateError.classList.remove('hidden');
+                return;
+            }
+            
+            if (!isValid) {
+                return;
+            }
             
             if (isEdit) {
                 const index = parseInt(modal.dataset.index);
                 employees[index] = { matricule, nom, prenom, poste };
+                showNotification(currentLang === 'fr' ? 'Employé modifié avec succès' : 'تم تعديل الموظف بنجاح', 'success');
             } else {
                 employees.push({ matricule, nom, prenom, poste });
+                showNotification(currentLang === 'fr' ? 'Employé ajouté avec succès' : 'تمت إضافة الموظف بنجاح', 'success');
             }
+            
+            // Save data to sessionStorage
+            sessionStorage.setItem('employees', JSON.stringify(employees));
             
             hideEmployeeModal();
             loadEmployees();
@@ -595,10 +2332,33 @@
         }
         
         function deleteEmployee(index) {
-            if (confirm('Êtes-vous sûr de vouloir supprimer cet employé?')) {
-                employees.splice(index, 1);
-                loadEmployees();
+            const employee = employees[index];
+            
+            // Check if employee has decisions
+            const hasDecisions = decisions.some(d => d.matricule === employee.matricule);
+            
+            if (hasDecisions) {
+                if (!confirm(currentLang === 'fr' ? 
+                    `Cet employé a des décisions de sanctions enregistrées. Supprimer l'employé supprimera également son historique. Êtes-vous sûr de vouloir continuer?` : 
+                    `هذا الموظف لديه قرارات عقوبات مسجلة. حذف الموظف سيؤدي أيضًا إلى حذف سجله. هل أنت متأكد من المتابعة؟`)) {
+                    return;
+                }
+                
+                // Remove associated decisions
+                decisions = decisions.filter(d => d.matricule !== employee.matricule);
+                sessionStorage.setItem('decisions', JSON.stringify(decisions));
+            } else {
+                if (!confirm(currentLang === 'fr' ? 
+                    'Êtes-vous sûr de vouloir supprimer cet employé?' : 
+                    'هل أنت متأكد من رغبتك في حذف هذا الموظف؟')) {
+                    return;
+                }
             }
+            
+            employees.splice(index, 1);
+            sessionStorage.setItem('employees', JSON.stringify(employees));
+            loadEmployees();
+            showNotification(currentLang === 'fr' ? 'Employé supprimé avec succès' : 'تم حذف الموظف بنجاح', 'info');
         }
         
         function importEmployeesFromJSON(file) {
@@ -610,17 +2370,38 @@
                     
                     if (Array.isArray(importedData)) {
                         employees = importedData;
+                        sessionStorage.setItem('employees', JSON.stringify(employees));
                         loadEmployees();
-                        alert('Importation réussie!');
+                        showNotification(currentLang === 'fr' ? 'Importation réussie!' : 'تم الاستيراد بنجاح!', 'success');
                     } else {
-                        alert('Format invalide. Le fichier doit contenir un tableau d\'employés.');
+                        showNotification(currentLang === 'fr' ? 
+                            'Format invalide. Le fichier doit contenir un tableau d\'employés.' : 
+                            'تنسيق غير صالح. يجب أن يحتوي الملف على مصفوفة من الموظفين.', 'error');
                     }
                 } catch (error) {
-                    alert('Erreur lors de l\'importation: ' + error.message);
+                    showNotification(
+                        (currentLang === 'fr' ? 
+                        'Erreur lors de l\'importation: ' : 
+                        'خطأ أثناء الاستيراد: ') + error.message, 
+                        'error'
+                    );
                 }
             };
             
             reader.readAsText(file);
+        }
+        
+        function exportEmployeesToJSON() {
+            const dataStr = JSON.stringify(employees, null, 2);
+            const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+            
+            const exportLink = document.createElement('a');
+            exportLink.setAttribute('href', dataUri);
+            exportLink.setAttribute('download', 'employees_export.json');
+            exportLink.setAttribute('target', '_blank');
+            document.body.appendChild(exportLink);
+            exportLink.click();
+            document.body.removeChild(exportLink);
         }
         
         // Sanctions Management
@@ -629,22 +2410,28 @@
             const fauteSelect = document.getElementById('decision-faute');
             
             tableBody.innerHTML = '';
-            fauteSelect.innerHTML = '<option value="">-- Sélectionner une faute --</option>';
+            fauteSelect.innerHTML = `<option value="">-- ${currentLang === 'fr' ? 'Sélectionner une faute' : 'اختيار مخالفة'} --</option>`;
             
             sanctions.forEach(sanction => {
                 const row = document.createElement('tr');
+                
+                // Use the corresponding language fields
+                const fauteText = currentSanctionsLang === 'fr' ? sanction.faute_fr : sanction.faute_ar;
+                const sanctionText = currentSanctionsLang === 'fr' ? sanction.sanction_fr : sanction.sanction_ar;
+                
                 row.innerHTML = `
-                    <td class="py-2 px-4 border-b">${sanction.faute}</td>
+                    <td class="py-2 px-4 border-b">${fauteText}</td>
                     <td class="py-2 px-4 border-b text-center">${sanction.degre}</td>
-                    <td class="py-2 px-4 border-b">${sanction.sanction}</td>
+                    <td class="py-2 px-4 border-b">${sanctionText}</td>
                 `;
                 tableBody.appendChild(row);
                 
+                // Add to faute select - use current language
                 const option = document.createElement('option');
-                option.value = sanction.faute;
-                option.textContent = sanction.faute;
+                option.value = currentLang === 'fr' ? sanction.faute_fr : sanction.faute_ar;
+                option.textContent = currentLang === 'fr' ? sanction.faute_fr : sanction.faute_ar;
                 option.dataset.degre = sanction.degre;
-                option.dataset.sanction = sanction.sanction;
+                option.dataset.sanction = currentLang === 'fr' ? sanction.sanction_fr : sanction.sanction_ar;
                 fauteSelect.appendChild(option);
             });
         }
@@ -655,26 +2442,27 @@
             const detailsDiv = document.getElementById('sanction-details');
             
             if (!fauteSearch) {
-                alert('Veuillez entrer une faute');
+                showNotification(currentLang === 'fr' ? 'Veuillez entrer une faute' : 'الرجاء إدخال مخالفة', 'warning');
                 return;
             }
             
-            // Search for partial match
+            // Search for partial match in both languages
             const matchingSanctions = sanctions.filter(s => 
-                s.faute.toLowerCase().includes(fauteSearch.toLowerCase())
+                s.faute_fr.toLowerCase().includes(fauteSearch.toLowerCase()) ||
+                s.faute_ar.includes(fauteSearch)
             );
             
             if (matchingSanctions.length > 0) {
                 detailsDiv.innerHTML = matchingSanctions.map(sanction => `
-                    <div class="mb-4 p-3 border rounded">
-                        <p><strong>الخطأ:</strong> ${sanction.faute}</p>
-                        <p><strong>الدرجة:</strong> ${sanction.degre}</p>
-                        <p><strong>العقوبة:</strong> ${sanction.sanction}</p>
+                    <div class="mb-4 p-3 border rounded ${currentLang === 'ar' ? 'rtl' : 'ltr'}">
+                        <p><strong>${currentLang === 'fr' ? 'Faute' : 'المخالفة'}:</strong> ${currentLang === 'fr' ? sanction.faute_fr : sanction.faute_ar}</p>
+                        <p><strong>${currentLang === 'fr' ? 'Degré' : 'الدرجة'}:</strong> ${sanction.degre}</p>
+                        <p><strong>${currentLang === 'fr' ? 'Sanction' : 'العقوبة'}:</strong> ${currentLang === 'fr' ? sanction.sanction_fr : sanction.sanction_ar}</p>
                     </div>
                 `).join('');
                 resultDiv.classList.remove('hidden');
             } else {
-                detailsDiv.innerHTML = `<p class="text-red-500">Aucune faute trouvée avec ce terme</p>`;
+                detailsDiv.innerHTML = `<p class="text-red-500">${currentLang === 'fr' ? 'Aucune faute trouvée avec ce terme' : 'لم يتم العثور على أي مخالفة بهذا المصطلح'}</p>`;
                 resultDiv.classList.remove('hidden');
             }
         }
@@ -694,29 +2482,66 @@
                     if (Array.isArray(importedData) && importedData.length > 0) {
                         // Check if the data has the required columns
                         const firstRow = importedData[0];
-                        if ('faute' in firstRow && 'degre' in firstRow && 'sanction' in firstRow) {
+                        if ('faute_fr' in firstRow && 'faute_ar' in firstRow && 'degre' in firstRow && 
+                            'sanction_fr' in firstRow && 'sanction_ar' in firstRow) {
                             sanctions = importedData;
+                            sessionStorage.setItem('sanctions', JSON.stringify(sanctions));
                             loadSanctions();
-                            alert('Importation réussie!');
+                            showNotification(currentLang === 'fr' ? 'Importation réussie!' : 'تم الاستيراد بنجاح!', 'success');
                         } else {
-                            alert('Format invalide. Le fichier doit contenir les colonnes: faute, degre, sanction');
+                            showNotification(currentLang === 'fr' ? 
+                                'Format invalide. Le fichier doit contenir les colonnes: faute_fr, faute_ar, degre, sanction_fr, sanction_ar' : 
+                                'تنسيق غير صالح. يجب أن يحتوي الملف على الأعمدة: faute_fr، faute_ar، degre، sanction_fr، sanction_ar', 'error');
                         }
                     } else {
-                        alert('Aucune donnée trouvée dans le fichier.');
+                        showNotification(currentLang === 'fr' ? 
+                            'Aucune donnée trouvée dans le fichier.' : 
+                            'لم يتم العثور على بيانات في الملف.', 'error');
                     }
                 } catch (error) {
-                    alert('Erreur lors de l\'importation: ' + error.message);
+                    showNotification(
+                        (currentLang === 'fr' ? 
+                        'Erreur lors de l\'importation: ' : 
+                        'خطأ أثناء الاستيراد: ') + error.message, 
+                        'error'
+                    );
                 }
             };
             
             reader.readAsArrayBuffer(file);
         }
         
+        function exportSanctionsToExcel() {
+            // Create a new workbook
+            const wb = XLSX.utils.book_new();
+            
+            // Convert sanctions to a worksheet
+            const ws = XLSX.utils.json_to_sheet(sanctions);
+            
+            // Add the worksheet to the workbook
+            XLSX.utils.book_append_sheet(wb, ws, "Sanctions");
+            
+            // Generate the Excel file
+            XLSX.writeFile(wb, "sanctions_export.xlsx");
+        }
+        
         function exportExcelTemplate() {
-            // Create a sample data structure
+            // Create a sample data structure for our bilingual sanctions
             const sampleData = [
-                { faute: "عدم احترام ساعات العمل", degre: "1", sanction: "التنبيه الكتابي" },
-                { faute: "الوصول المتأخر أكثر من مرتين في الشهر دون سبب", degre: "1", sanction: "التوبيخ" }
+                { 
+                    faute_fr: "Non-respect des horaires de travail", 
+                    faute_ar: "عدم احترام ساعات العمل", 
+                    degre: "1", 
+                    sanction_fr: "Avertissement écrit / Blâme",
+                    sanction_ar: "التنبيه الكتابي / التوبيخ"
+                },
+                { 
+                    faute_fr: "Arrivée tardive plus de deux fois par mois sans motif", 
+                    faute_ar: "الوصول المتأخر أكثر من مرتين في الشهر دون سبب", 
+                    degre: "1", 
+                    sanction_fr: "Avertissement écrit / Blâme",
+                    sanction_ar: "التنبيه الكتابي / التوبيخ"
+                }
             ];
             
             // Create a new workbook
@@ -732,10 +2557,222 @@
             XLSX.writeFile(wb, "sanctions_template.xlsx");
         }
         
+        // History Management
+        function loadEmployeeHistory() {
+            const historySelect = document.getElementById('history-employee');
+            historySelect.innerHTML = `<option value="">-- ${currentLang === 'fr' ? 'Sélectionner un employé' : 'اختيار موظف'} --</option>`;
+            historySelect.innerHTML += `<option value="all">${currentLang === 'fr' ? 'Tous les employés' : 'جميع الموظفين'}</option>`;
+            
+            employees.forEach(employee => {
+                const option = document.createElement('option');
+                option.value = employee.matricule;
+                option.textContent = `${employee.matricule} - ${employee.nom} ${employee.prenom}`;
+                historySelect.appendChild(option);
+            });
+        }
+        
+        function viewEmployeeHistory() {
+            const matricule = document.getElementById('history-employee').value;
+            const historyResult = document.getElementById('history-result');
+            const employeeHistory = document.getElementById('employee-history');
+            const historyList = document.getElementById('history-list');
+            const noHistory = document.getElementById('no-history');
+            const employeeNameSpan = document.getElementById('history-employee-name');
+            
+            if (!matricule) {
+                showNotification(currentLang === 'fr' ? 'Veuillez sélectionner un employé' : 'الرجاء اختيار موظف', 'warning');
+                return;
+            }
+            
+            // Clear existing data
+            employeeHistory.innerHTML = '';
+            historyList.innerHTML = '';
+            
+            // Get filtered decisions
+            let filteredDecisions = [];
+            
+            if (matricule === 'all') {
+                // Show all decisions
+                employeeNameSpan.textContent = currentLang === 'fr' ? 'Tous les employés' : 'جميع الموظفين';
+                filteredDecisions = decisions;
+            } else {
+                // Filter by employee
+                const employee = employees.find(emp => emp.matricule === matricule);
+                if (!employee) {
+                    showNotification(currentLang === 'fr' ? 'Employé non trouvé' : 'لم يتم العثور على الموظف', 'error');
+                    return;
+                }
+                
+                employeeNameSpan.textContent = `${employee.nom} ${employee.prenom} (${employee.matricule})`;
+                filteredDecisions = decisions.filter(d => d.matricule === matricule);
+            }
+            
+            if (filteredDecisions.length > 0) {
+                // Update the cards view
+                filteredDecisions.forEach(decision => {
+                    const employee = employees.find(emp => emp.matricule === decision.matricule) || { 
+                        nom: currentLang === 'fr' ? 'Inconnu' : 'غير معروف', 
+                        prenom: '', 
+                        poste: currentLang === 'fr' ? 'Poste inconnu' : 'منصب غير معروف' 
+                    };
+                    
+                    const card = document.createElement('div');
+                    card.className = 'history-card bg-white dark:bg-gray-700 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-600';
+                    
+                    // Determine severity color
+                    let severityColor;
+                    if (decision.duree <= 3) {
+                        severityColor = 'bg-yellow-100 dark:bg-yellow-800 text-yellow-800 dark:text-yellow-100';
+                    } else if (decision.duree <= 10) {
+                        severityColor = 'bg-orange-100 dark:bg-orange-800 text-orange-800 dark:text-orange-100';
+                    } else {
+                        severityColor = 'bg-red-100 dark:bg-red-800 text-red-800 dark:text-red-100';
+                    }
+                    
+                    card.innerHTML = `
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="text-sm ${severityColor} px-2 py-1 rounded">
+                                ${decision.duree} ${currentLang === 'fr' ? 'jours' : 'أيام'}
+                            </div>
+                            <div class="text-sm text-gray-500 dark:text-gray-400">
+                                ${currentLang === 'fr' ? 'Réf' : 'المرجع'}: ${decision.reference}
+                            </div>
+                        </div>
+                        ${matricule === 'all' ? `<p class="text-sm font-bold mb-1">${employee.nom} ${employee.prenom}</p>` : ''}
+                        <h4 class="font-semibold mb-1">${decision.motif}</h4>
+                        <p class="text-sm mb-2">${decision.faute}</p>
+                        <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-2">
+                            <span>${currentLang === 'fr' ? 'Du' : 'من'} ${formatDate(decision.dateEffective)}</span>
+                            <span>${currentLang === 'fr' ? 'Au' : 'إلى'} ${formatDate(calculateEndDate(decision.dateEffective, decision.duree))}</span>
+                        </div>
+                    `;
+                    
+                    employeeHistory.appendChild(card);
+                    
+                    // Also update the table view (hidden but used for export)
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="py-2 px-4 border-b">${decision.matricule}</td>
+                        <td class="py-2 px-4 border-b">${employee.nom}</td>
+                        <td class="py-2 px-4 border-b">${employee.prenom}</td>
+                        <td class="py-2 px-4 border-b">${decision.reference}</td>
+                        <td class="py-2 px-4 border-b">${formatDate(decision.date)}</td>
+                        <td class="py-2 px-4 border-b">${decision.motif}</td>
+                        <td class="py-2 px-4 border-b">${decision.faute}</td>
+                        <td class="py-2 px-4 border-b">${decision.sanction}</td>
+                        <td class="py-2 px-4 border-b">${decision.duree}</td>
+                        <td class="py-2 px-4 border-b">${formatDate(decision.dateEffective)}</td>
+                        <td class="py-2 px-4 border-b">${formatDate(decision.dateRetour)}</td>
+                    `;
+                    historyList.appendChild(row);
+                });
+                
+                noHistory.classList.add('hidden');
+            } else {
+                noHistory.classList.remove('hidden');
+            }
+            
+            historyResult.classList.remove('hidden');
+        }
+        
+        // Function to export history to Excel
+        function exportHistoryToExcel() {
+            const matricule = document.getElementById('history-employee').value;
+            
+            if (!matricule) {
+                showNotification(currentLang === 'fr' ? 
+                    'Veuillez sélectionner un employé ou "Tous les employés"' : 
+                    'الرجاء اختيار موظف أو "جميع الموظفين"', 'warning');
+                return;
+            }
+            
+            // Get filtered decisions
+            let filteredDecisions = [];
+            let fileName = 'historique_sanctions';
+            
+            if (matricule === 'all') {
+                // Export all decisions
+                filteredDecisions = decisions;
+                fileName = 'historique_sanctions_tous_employes';
+            } else {
+                // Filter by employee
+                const employee = employees.find(emp => emp.matricule === matricule);
+                if (!employee) {
+                    showNotification(currentLang === 'fr' ? 'Employé non trouvé' : 'لم يتم العثور على الموظف', 'error');
+                    return;
+                }
+                
+                filteredDecisions = decisions.filter(d => d.matricule === matricule);
+                fileName = `historique_sanctions_${employee.nom}_${employee.prenom}`.replace(/\s+/g, '_');
+            }
+            
+            if (filteredDecisions.length === 0) {
+                showNotification(currentLang === 'fr' ? 'Aucune donnée à exporter' : 'لا توجد بيانات للتصدير', 'warning');
+                return;
+            }
+            
+            // Prepare data for export
+            const exportData = filteredDecisions.map(decision => {
+                const employee = employees.find(emp => emp.matricule === decision.matricule) || { 
+                    nom: currentLang === 'fr' ? 'Inconnu' : 'غير معروف', 
+                    prenom: '', 
+                    poste: currentLang === 'fr' ? 'Poste inconnu' : 'منصب غير معروف' 
+                };
+                
+                return {
+                    [currentLang === 'fr' ? 'Matricule' : 'رقم التسجيل']: decision.matricule,
+                    [currentLang === 'fr' ? 'Nom' : 'اللقب']: employee.nom,
+                    [currentLang === 'fr' ? 'Prénom' : 'الاسم']: employee.prenom,
+                    [currentLang === 'fr' ? 'Référence' : 'المرجع']: decision.reference,
+                    [currentLang === 'fr' ? 'Date Décision' : 'تاريخ القرار']: formatDate(decision.date),
+                    [currentLang === 'fr' ? 'Motif' : 'السبب']: decision.motif,
+                    [currentLang === 'fr' ? 'Faute' : 'المخالفة']: decision.faute,
+                    [currentLang === 'fr' ? 'Sanction' : 'العقوبة']: decision.sanction,
+                    [currentLang === 'fr' ? 'Durée (jours)' : 'المدة (أيام)']: decision.duree,
+                    [currentLang === 'fr' ? 'Date Début' : 'تاريخ البداية']: formatDate(decision.dateEffective),
+                    [currentLang === 'fr' ? 'Date Reprise' : 'تاريخ العودة']: formatDate(decision.dateRetour),
+                    [currentLang === 'fr' ? 'Responsable RH' : 'مسؤول الموارد البشرية']: decision.responsableRH
+                };
+            });
+            
+            // Create a new workbook
+            const wb = XLSX.utils.book_new();
+            
+            // Convert the data to a worksheet
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            
+            // Set column widths
+            const colWidths = [
+                { wch: 10 }, // Matricule
+                { wch: 15 }, // Nom
+                { wch: 15 }, // Prénom
+                { wch: 15 }, // Référence
+                { wch: 15 }, // Date Décision
+                { wch: 25 }, // Motif
+                { wch: 30 }, // Faute
+                { wch: 30 }, // Sanction
+                { wch: 15 }, // Durée
+                { wch: 15 }, // Date Début
+                { wch: 15 }, // Date Reprise
+                { wch: 20 }  // Responsable RH
+            ];
+            
+            ws['!cols'] = colWidths;
+            
+            // Add the worksheet to the workbook
+            XLSX.utils.book_append_sheet(wb, ws, currentLang === 'fr' ? "Historique Sanctions" : "سجل العقوبات");
+            
+            // Generate the Excel file
+            XLSX.writeFile(wb, `${fileName}.xlsx`);
+            
+            showNotification(currentLang === 'fr' ? 'Historique exporté avec succès!' : 'تم تصدير السجل بنجاح!', 'success');
+        }
+        
         // Decision Management
         function showDecisionForm() {
             document.getElementById('decision-form').classList.remove('hidden');
-            document.getElementById('sanction-result').classList.add('hidden');
+            document.getElementById('section-sanctions').classList.add('hidden');
+            setTimeout(() => document.getElementById('decision-form').classList.add('active'), 10);
             
             // Set current date
             const today = new Date();
@@ -746,6 +2783,28 @@
             const currentYear = today.getFullYear();
             document.getElementById('decision-reference-year').value = currentYear;
             
+            // Auto-set reference number
+            document.getElementById('decision-reference-num').value = getNextReferenceNumber().toString().padStart(3, '0');
+            
+            // Update effective date (default to tomorrow)
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            document.getElementById('decision-effective-date').value = tomorrow.toISOString().split('T')[0];
+            
+            // Set default duration
+            document.getElementById('decision-duree').value = '1';
+            updateReturnDate();
+            
+            // Focus on employee select
+            setTimeout(() => {
+                document.getElementById('decision-employee').focus();
+            }, 100);
+            
+            // Add event listeners for date calculation
+            document.getElementById('decision-effective-date').addEventListener('change', updateReturnDate);
+            document.getElementById('decision-duree').addEventListener('change', updateReturnDate);
+            document.getElementById('decision-duree').addEventListener('input', updateReturnDate);
+            
             // Update sanction dropdown based on selected faute
             document.getElementById('decision-faute').addEventListener('change', function() {
                 const selectedFaute = this.value;
@@ -755,7 +2814,7 @@
                     const selectedOption = this.options[this.selectedIndex];
                     const sanctions = selectedOption.dataset.sanction.split('/').map(s => s.trim());
                     
-                    sanctionSelect.innerHTML = '<option value="">-- Sélectionner une sanction --</option>';
+                    sanctionSelect.innerHTML = `<option value="">-- ${currentLang === 'fr' ? 'Sélectionner une sanction' : 'اختيار عقوبة'} --</option>`;
                     
                     sanctions.forEach(sanction => {
                         const option = document.createElement('option');
@@ -764,12 +2823,65 @@
                         sanctionSelect.appendChild(option);
                     });
                 } else {
-                    sanctionSelect.innerHTML = '<option value="">-- Sélectionner une sanction --</option>';
+                    sanctionSelect.innerHTML = `<option value="">-- ${currentLang === 'fr' ? 'Sélectionner une sanction' : 'اختيار عقوبة'} --</option>`;
                 }
             });
         }
         
+        function updateReturnDate() {
+            const effectiveDateInput = document.getElementById('decision-effective-date');
+            const dureeInput = document.getElementById('decision-duree');
+            const returnDateInput = document.getElementById('decision-return-date');
+            
+            if (effectiveDateInput.value && dureeInput.value) {
+                const duree = parseInt(dureeInput.value);
+                if (duree > 0) {
+                    const returnDate = calculateReturnDate(effectiveDateInput.value, duree);
+                    returnDateInput.value = returnDate.toISOString().split('T')[0];
+                }
+            }
+        }
+        
+        function generateReferenceAutomatically() {
+            const nextRef = getNextReferenceNumber();
+            const year = new Date().getFullYear();
+            
+            document.getElementById('decision-reference-num').value = nextRef;
+            document.getElementById('decision-reference-year').value = year;
+            
+            showNotification(currentLang === 'fr' ? 'Référence générée automatiquement' : 'تم إنشاء المرجع تلقائيًا', 'info');
+        }
+        
+        function validateDecisionForm() {
+            const requiredFields = [
+                'decision-employee', 'decision-date', 'decision-reference-num', 
+                'decision-reference-year', 'decision-effective-date', 'decision-duree', 
+                'decision-return-date', 'decision-motif', 'decision-faute', 
+                'decision-sanction', 'decision-manquements', 'decision-rh-name'
+            ];
+            
+            let isValid = true;
+            
+            requiredFields.forEach(fieldId => {
+                const field = document.getElementById(fieldId);
+                if (!field.value.trim()) {
+                    field.classList.add('border-red-500');
+                    isValid = false;
+                } else {
+                    field.classList.remove('border-red-500');
+                }
+            });
+            
+            if (!isValid) {
+                showNotification(currentLang === 'fr' ? 'Veuillez remplir tous les champs obligatoires' : 'يرجى ملء جميع الحقول المطلوبة', 'error');
+            }
+            
+            return isValid;
+        }
+        
         function previewDecision() {
+            if (!validateDecisionForm()) return;
+            
             const employeeSelect = document.getElementById('decision-employee');
             const fauteSelect = document.getElementById('decision-faute');
             const sanctionSelect = document.getElementById('decision-sanction');
@@ -783,22 +2895,14 @@
             const manquementsInput = document.getElementById('decision-manquements');
             const rhNameInput = document.getElementById('decision-rh-name');
             
-            // Vérification des champs obligatoires
-            if (!employeeSelect.value || !dateInput.value || !refNumInput.value || !refYearInput.value || 
-                !effectiveDateInput.value || !dureeInput.value || !returnDateInput.value || !motifInput.value || 
-                !manquementsInput.value || !rhNameInput.value) {
-                alert('Veuillez remplir tous les champs obligatoires');
-                return;
-            }
-            
             const employee = employees.find(emp => emp.matricule === employeeSelect.value);
             
             // Format de la référence: XXX/RH/DCS/YYYY
             const reference = `${refNumInput.value.padStart(3, '0')}/RH/DCS/${refYearInput.value}`;
             document.getElementById('preview-reference').textContent = reference;
+            document.getElementById('preview-reference-ar').textContent = reference;
             
             // Formatage des dates
-            const dateOptions = { day: '2-digit', month: '2-digit', year: 'numeric' };
             const dateDecision = new Date(dateInput.value);
             const dateEffective = new Date(effectiveDateInput.value);
             const dateReturn = new Date(returnDateInput.value);
@@ -807,41 +2911,220 @@
             const dateEnd = new Date(dateEffective);
             dateEnd.setDate(dateEffective.getDate() + parseInt(dureeInput.value) - 1);
             
-            document.getElementById('preview-date').textContent = dateDecision.toLocaleDateString('fr-FR', dateOptions);
+            // Update both French and Arabic previews
+            // French version
+            document.getElementById('preview-date').textContent = dateDecision.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
             document.getElementById('preview-name').textContent = `${employee.nom} ${employee.prenom}`;
+            document.getElementById('preview-matricule').textContent = employee.matricule;
+            document.getElementById('preview-poste').textContent = employee.poste;
             document.getElementById('preview-motif').textContent = motifInput.value;
             document.getElementById('preview-duree').textContent = dureeInput.value;
+            document.getElementById('preview-effective-date').textContent = dateEffective.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            document.getElementById('preview-end-date').textContent = dateEnd.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            document.getElementById('preview-return-date').textContent = dateReturn.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            document.getElementById('preview-rh-name').textContent = rhNameInput.value;
+            
+            // Arabic version
+            document.getElementById('preview-date-ar').textContent = dateDecision.toLocaleDateString('ar-DZ', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            document.getElementById('preview-name-ar').textContent = `${employee.nom} ${employee.prenom}`;
+            document.getElementById('preview-matricule-ar').textContent = employee.matricule;
+            document.getElementById('preview-poste-ar').textContent = employee.poste;
+            document.getElementById('preview-motif-ar').textContent = motifInput.value;
+            document.getElementById('preview-duree-ar').textContent = dureeInput.value;
+            document.getElementById('preview-effective-date-ar').textContent = dateEffective.toLocaleDateString('ar-DZ', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            document.getElementById('preview-end-date-ar').textContent = dateEnd.toLocaleDateString('ar-DZ', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            document.getElementById('preview-return-date-ar').textContent = dateReturn.toLocaleDateString('ar-DZ', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            document.getElementById('preview-rh-name-ar').textContent = rhNameInput.value;
             
             // Traitement des manquements (un par ligne)
             const manquementsList = document.getElementById('preview-manquements-list');
+            const manquementsListAr = document.getElementById('preview-manquements-list-ar');
             manquementsList.innerHTML = '';
+            manquementsListAr.innerHTML = '';
+            
             const manquements = manquementsInput.value.split('\n').filter(m => m.trim() !== '');
             manquements.forEach(manquement => {
+                // French version
                 const li = document.createElement('li');
                 li.textContent = manquement;
                 manquementsList.appendChild(li);
+                
+                // Arabic version
+                const liAr = document.createElement('li');
+                liAr.textContent = manquement;
+                manquementsListAr.appendChild(liAr);
             });
             
-            document.getElementById('preview-effective-date').textContent = dateEffective.toLocaleDateString('fr-FR', dateOptions);
-            document.getElementById('preview-end-date').textContent = dateEnd.toLocaleDateString('fr-FR', dateOptions);
-            document.getElementById('preview-return-date').textContent = dateReturn.toLocaleDateString('fr-FR', dateOptions);
-            document.getElementById('preview-rh-name').textContent = rhNameInput.value;
+            // Reset the preview language to French by default
+            currentPreviewLang = 'fr';
+            document.getElementById('decision-document-fr').classList.remove('hidden');
+            document.getElementById('decision-document-ar').classList.add('hidden');
+            document.getElementById('toggle-language-text').textContent = currentLang === 'fr' ? 'Version Arabe' : 'النسخة العربية';
             
             document.getElementById('decision-form').classList.add('hidden');
+            document.getElementById('decision-form').classList.remove('active');
             document.getElementById('print-preview').classList.remove('hidden');
+            setTimeout(() => document.getElementById('print-preview').classList.add('active'), 10);
+        }
+        
+        function saveDecision() {
+            const employeeSelect = document.getElementById('decision-employee');
+            const fauteSelect = document.getElementById('decision-faute');
+            const sanctionSelect = document.getElementById('decision-sanction');
+            const dateInput = document.getElementById('decision-date');
+            const refNumInput = document.getElementById('decision-reference-num');
+            const refYearInput = document.getElementById('decision-reference-year');
+            const effectiveDateInput = document.getElementById('decision-effective-date');
+            const dureeInput = document.getElementById('decision-duree');
+            const returnDateInput = document.getElementById('decision-return-date');
+            const motifInput = document.getElementById('decision-motif');
+            const manquementsInput = document.getElementById('decision-manquements');
+            const rhNameInput = document.getElementById('decision-rh-name');
+            
+            // Format de la référence: XXX/RH/DCS/YYYY
+            const reference = `${refNumInput.value.padStart(3, '0')}/RH/DCS/${refYearInput.value}`;
+            
+            // Create decision object
+            const decision = {
+                reference: reference,
+                matricule: employeeSelect.value,
+                date: dateInput.value,
+                dateEffective: effectiveDateInput.value,
+                duree: parseInt(dureeInput.value),
+                dateRetour: returnDateInput.value,
+                motif: motifInput.value,
+                faute: fauteSelect.value,
+                sanction: sanctionSelect.value,
+                manquements: manquementsInput.value.split('\n').filter(m => m.trim() !== ''),
+                responsableRH: rhNameInput.value
+            };
+            
+            // Add to decisions array
+            decisions.push(decision);
+            
+            // Save to sessionStorage
+            sessionStorage.setItem('decisions', JSON.stringify(decisions));
+            
+            // Generate reminders for this decision
+            generateReminders();
+            
+            // Show success notification
+            showNotification(currentLang === 'fr' ? 'Décision enregistrée avec succès' : 'تم حفظ القرار بنجاح', 'success');
+            
+            // Print the decision
+            printDecision();
         }
         
         function printDecision() {
             window.print();
         }
         
+        function exportPDF() {
+            const { jsPDF } = window.jspdf;
+            
+            // Get the document element based on current language
+            const element = document.getElementById(currentPreviewLang === 'fr' ? 'decision-document-fr' : 'decision-document-ar');
+            
+            // Show loading notification
+            showNotification(currentLang === 'fr' ? 'Génération du PDF en cours...' : 'جاري إنشاء ملف PDF...', 'info');
+            
+            // Use html2canvas to capture the element
+            html2canvas(element).then(canvas => {
+                const imgData = canvas.toDataURL('image/png');
+                
+                // Calculate PDF dimensions based on A4 format
+                const pdfWidth = 210; // mm for A4
+                const pdfHeight = 297; // mm for A4
+                
+                const imgWidth = canvas.width;
+                const imgHeight = canvas.height;
+                const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+                
+                const imgX = (pdfWidth - imgWidth * ratio) / 2;
+                const imgY = 10; // top margin
+                
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
+                
+                // Add footer with page number
+                pdf.setFontSize(10);
+                pdf.setTextColor(100, 100, 100);
+                pdf.text('Page 1', pdfWidth / 2, pdfHeight - 10, { align: 'center' });
+                
+                // Generate filename based on reference and date
+                const refElement = document.getElementById(currentPreviewLang === 'fr' ? 'preview-reference' : 'preview-reference-ar');
+                const empElement = document.getElementById(currentPreviewLang === 'fr' ? 'preview-name' : 'preview-name-ar');
+                const filename = `Decision_${refElement.textContent.replace(/\//g, '_')}_${empElement.textContent.replace(/\s+/g, '_')}.pdf`;
+                
+                // Save PDF
+                pdf.save(filename);
+                
+                showNotification(currentLang === 'fr' ? 'PDF exporté avec succès' : 'تم تصدير ملف PDF بنجاح', 'success');
+            });
+        }
+        
         // Event Listeners
         document.addEventListener('DOMContentLoaded', function() {
+            // Initialize dark mode
+            initDarkMode();
+            
+            // Try to load language preference from sessionStorage
+            const storedLanguage = sessionStorage.getItem('language');
+            if (storedLanguage) {
+                updateUILanguage(storedLanguage);
+            }
+            
+            // Set up language dropdown
+            document.getElementById('languageToggle').addEventListener('click', toggleLanguageDropdown);
+            document.getElementById('lang-fr').addEventListener('click', () => setLanguage('fr'));
+            document.getElementById('lang-ar').addEventListener('click', () => setLanguage('ar'));
+            
+            // Set up sanctions language toggle
+            document.getElementById('sanctions-lang-fr').addEventListener('click', () => toggleSanctionsLanguage('fr'));
+            document.getElementById('sanctions-lang-ar').addEventListener('click', () => toggleSanctionsLanguage('ar'));
+            
+            // Set up decision language toggle
+            document.getElementById('toggle-language-btn').addEventListener('click', toggleDecisionLanguage);
+            
+            // Try to load data from sessionStorage
+            try {
+                const storedEmployees = sessionStorage.getItem('employees');
+                if (storedEmployees) {
+                    employees = JSON.parse(storedEmployees);
+                }
+                
+                const storedSanctions = sessionStorage.getItem('sanctions');
+                if (storedSanctions) {
+                    sanctions = JSON.parse(storedSanctions);
+                }
+                
+                const storedDecisions = sessionStorage.getItem('decisions');
+                if (storedDecisions) {
+                    decisions = JSON.parse(storedDecisions);
+                }
+                
+                const storedReminders = sessionStorage.getItem('reminders');
+                if (storedReminders) {
+                    reminders = JSON.parse(storedReminders);
+                }
+            } catch (error) {
+                console.error('Error loading stored data:', error);
+            }
+            
             // Load initial data
             loadEmployees();
             loadSanctions();
+            loadEmployeeHistory();
+            initDashboard();
             
-            // Employee search
+            // Generate reminders
+            generateReminders();
+            loadReminders();
+            
+            // Mark all reminders as read
+            document.getElementById('mark-all-read-btn').addEventListener('click', markAllRemindersAsRead);
+            
+            // Employee search with debounce
             document.getElementById('search-btn').addEventListener('click', searchEmployee);
             document.getElementById('search-matricule').addEventListener('keyup', function(e) {
                 if (e.key === 'Enter') {
@@ -849,45 +3132,83 @@
                 }
             });
             
-            // Faute search
+            // Employee filtering
+            document.getElementById('filter-employee').addEventListener('input', debounce(function() {
+                filterEmployees(this.value);
+            }, 300));
+            
+            // Sanction filtering
+            document.getElementById('filter-sanction').addEventListener('input', debounce(function() {
+                filterSanctions(this.value);
+            }, 300));
+            
+            // History filtering
+            document.getElementById('filter-history').addEventListener('input', debounce(function() {
+                filterHistory(this.value);
+            }, 300));
+            
+            // Faute search with debounce
             document.getElementById('search-faute-btn').addEventListener('click', searchFaute);
-            document.getElementById('search-faute').addEventListener('keyup', function(e) {
+            document.getElementById('search-faute').addEventListener('keyup', debounce(function(e) {
                 if (e.key === 'Enter') {
                     searchFaute();
                 }
-            });
+            }, 300));
             
             // Employee modal
             document.getElementById('add-employee-btn').addEventListener('click', () => showEmployeeModal());
             document.getElementById('cancel-employee-btn').addEventListener('click', hideEmployeeModal);
             document.getElementById('save-employee-btn').addEventListener('click', saveEmployee);
             
+            // History view and export
+            document.getElementById('view-history-btn').addEventListener('click', viewEmployeeHistory);
+            document.getElementById('export-history-btn').addEventListener('click', exportHistoryToExcel);
+            
             // Import/Export
             document.getElementById('import-json').addEventListener('change', function(e) {
                 if (this.files.length > 0) {
                     importEmployeesFromJSON(this.files[0]);
+                    this.value = ''; // Reset file input
                 }
             });
+            
+            document.getElementById('export-employees-btn').addEventListener('click', exportEmployeesToJSON);
             
             document.getElementById('import-excel').addEventListener('change', function(e) {
                 if (this.files.length > 0) {
                     importSanctionsFromExcel(this.files[0]);
+                    this.value = ''; // Reset file input
                 }
             });
             
+            document.getElementById('export-sanctions-btn').addEventListener('click', exportSanctionsToExcel);
             document.getElementById('export-template-btn').addEventListener('click', exportExcelTemplate);
             
             // Decision buttons
             document.getElementById('create-decision-btn').addEventListener('click', showDecisionForm);
+            document.getElementById('auto-reference-btn').addEventListener('click', generateReferenceAutomatically);
             document.getElementById('cancel-decision-btn').addEventListener('click', function() {
                 document.getElementById('decision-form').classList.add('hidden');
+                document.getElementById('decision-form').classList.remove('active');
+                document.getElementById('section-sanctions').classList.remove('hidden');
             });
             document.getElementById('preview-decision-btn').addEventListener('click', previewDecision);
+            document.getElementById('save-decision-btn').addEventListener('click', function() {
+                if (validateDecisionForm()) {
+                    saveDecision();
+                }
+            });
             document.getElementById('print-decision-btn').addEventListener('click', printDecision);
+            document.getElementById('export-pdf-btn').addEventListener('click', exportPDF);
             document.getElementById('back-from-preview-btn').addEventListener('click', function() {
                 document.getElementById('print-preview').classList.add('hidden');
+                document.getElementById('print-preview').classList.remove('active');
                 document.getElementById('decision-form').classList.remove('hidden');
+                setTimeout(() => document.getElementById('decision-form').classList.add('active'), 10);
             });
+            
+            // Initial tab
+            switchTab('tab-dashboard');
         });
     </script>
 </body>
