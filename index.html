@@ -306,21 +306,58 @@
                         <label for="history-employee" class="block text-sm font-medium mb-1">Sélectionner un Employé</label>
                         <select id="history-employee" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" aria-describedby="history-employee-help">
                             <option value="">-- Sélectionner un employé --</option>
+                            <option value="all">Tous les employés</option>
                         </select>
                         <p id="history-employee-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Sélectionnez un employé pour voir son historique de sanctions</p>
                     </div>
-                    <div>
+                    <div class="flex space-x-2">
                         <button id="view-history-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" aria-label="Afficher l'historique">
-                            Afficher l'Historique
+                            Afficher
+                        </button>
+                        <button id="export-history-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50" aria-label="Exporter l'historique en Excel">
+                            Exporter Excel
                         </button>
                     </div>
                 </div>
                 
                 <div id="history-result" class="mt-4 hidden">
-                    <h4 class="text-lg font-medium mb-2">Sanctions pour: <span id="history-employee-name"></span></h4>
+                    <div class="flex justify-between items-center mb-2">
+                        <h4 class="text-lg font-medium">Sanctions pour: <span id="history-employee-name"></span></h4>
+                        
+                        <!-- Filter for historique -->
+                        <div class="w-64">
+                            <input type="text" id="filter-history" class="filter-input w-full p-2 border rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="Filtrer l'historique" aria-label="Filtrer l'historique">
+                        </div>
+                    </div>
+                    
                     <div id="employee-history" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
                         <!-- History cards will be displayed here -->
                     </div>
+                    
+                    <!-- Table view for history (visible only for export) -->
+                    <div id="history-table-container" class="hidden mt-4">
+                        <table id="history-table" class="min-w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600">
+                            <thead>
+                                <tr class="bg-gray-200 dark:bg-gray-800">
+                                    <th class="py-2 px-4 border-b">Matricule</th>
+                                    <th class="py-2 px-4 border-b">Nom</th>
+                                    <th class="py-2 px-4 border-b">Prénom</th>
+                                    <th class="py-2 px-4 border-b">Référence</th>
+                                    <th class="py-2 px-4 border-b">Date</th>
+                                    <th class="py-2 px-4 border-b">Motif</th>
+                                    <th class="py-2 px-4 border-b">Faute</th>
+                                    <th class="py-2 px-4 border-b">Sanction</th>
+                                    <th class="py-2 px-4 border-b">Durée</th>
+                                    <th class="py-2 px-4 border-b">Date Début</th>
+                                    <th class="py-2 px-4 border-b">Date Reprise</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-list">
+                                <!-- History will be listed here -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
                     <p id="no-history" class="text-gray-500 dark:text-gray-400 mt-4 text-center hidden">Aucune sanction trouvée pour cet employé.</p>
                 </div>
             </div>
@@ -816,6 +853,7 @@
             tableBody.innerHTML = '';
             employeeSelect.innerHTML = '<option value="">-- Sélectionner un employé --</option>';
             historyEmployeeSelect.innerHTML = '<option value="">-- Sélectionner un employé --</option>';
+            historyEmployeeSelect.innerHTML += '<option value="all">Tous les employés</option>';
             
             employees.forEach((employee, index) => {
                 const row = document.createElement('tr');
@@ -888,6 +926,21 @@
                     row.style.display = '';
                 } else {
                     row.style.display = 'none';
+                }
+            });
+        }
+        
+        // Function to filter history cards
+        function filterHistory(searchTerm) {
+            const historyCards = document.querySelectorAll('#employee-history .history-card');
+            const searchLower = searchTerm.toLowerCase();
+            
+            historyCards.forEach(card => {
+                const text = card.textContent.toLowerCase();
+                if (text.includes(searchLower)) {
+                    card.style.display = '';
+                } else {
+                    card.style.display = 'none';
                 }
             });
         }
@@ -1246,6 +1299,7 @@
         function loadEmployeeHistory() {
             const historySelect = document.getElementById('history-employee');
             historySelect.innerHTML = '<option value="">-- Sélectionner un employé --</option>';
+            historySelect.innerHTML += '<option value="all">Tous les employés</option>';
             
             employees.forEach(employee => {
                 const option = document.createElement('option');
@@ -1259,6 +1313,7 @@
             const matricule = document.getElementById('history-employee').value;
             const historyResult = document.getElementById('history-result');
             const employeeHistory = document.getElementById('employee-history');
+            const historyList = document.getElementById('history-list');
             const noHistory = document.getElementById('no-history');
             const employeeNameSpan = document.getElementById('history-employee-name');
             
@@ -1267,21 +1322,38 @@
                 return;
             }
             
-            const employee = employees.find(emp => emp.matricule === matricule);
-            if (!employee) {
-                showNotification('Employé non trouvé', 'error');
-                return;
+            // Clear existing data
+            employeeHistory.innerHTML = '';
+            historyList.innerHTML = '';
+            
+            // Get filtered decisions
+            let filteredDecisions = [];
+            
+            if (matricule === 'all') {
+                // Show all decisions
+                employeeNameSpan.textContent = 'Tous les employés';
+                filteredDecisions = decisions;
+            } else {
+                // Filter by employee
+                const employee = employees.find(emp => emp.matricule === matricule);
+                if (!employee) {
+                    showNotification('Employé non trouvé', 'error');
+                    return;
+                }
+                
+                employeeNameSpan.textContent = `${employee.nom} ${employee.prenom} (${employee.matricule})`;
+                filteredDecisions = decisions.filter(d => d.matricule === matricule);
             }
             
-            employeeNameSpan.textContent = `${employee.nom} ${employee.prenom} (${employee.matricule})`;
-            
-            // Get employee's decisions
-            const employeeDecisions = decisions.filter(d => d.matricule === matricule);
-            
-            employeeHistory.innerHTML = '';
-            
-            if (employeeDecisions.length > 0) {
-                employeeDecisions.forEach(decision => {
+            if (filteredDecisions.length > 0) {
+                // Update the cards view
+                filteredDecisions.forEach(decision => {
+                    const employee = employees.find(emp => emp.matricule === decision.matricule) || { 
+                        nom: 'Inconnu', 
+                        prenom: '', 
+                        poste: 'Poste inconnu' 
+                    };
+                    
                     const card = document.createElement('div');
                     card.className = 'history-card bg-white dark:bg-gray-700 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-600';
                     
@@ -1304,6 +1376,7 @@
                                 Réf: ${decision.reference}
                             </div>
                         </div>
+                        ${matricule === 'all' ? `<p class="text-sm font-bold mb-1">${employee.nom} ${employee.prenom}</p>` : ''}
                         <h4 class="font-semibold mb-1">${decision.motif}</h4>
                         <p class="text-sm mb-2">${decision.faute}</p>
                         <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-2">
@@ -1313,6 +1386,23 @@
                     `;
                     
                     employeeHistory.appendChild(card);
+                    
+                    // Also update the table view (hidden but used for export)
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="py-2 px-4 border-b">${decision.matricule}</td>
+                        <td class="py-2 px-4 border-b">${employee.nom}</td>
+                        <td class="py-2 px-4 border-b">${employee.prenom}</td>
+                        <td class="py-2 px-4 border-b">${decision.reference}</td>
+                        <td class="py-2 px-4 border-b">${formatDate(decision.date)}</td>
+                        <td class="py-2 px-4 border-b">${decision.motif}</td>
+                        <td class="py-2 px-4 border-b">${decision.faute}</td>
+                        <td class="py-2 px-4 border-b">${decision.sanction}</td>
+                        <td class="py-2 px-4 border-b">${decision.duree}</td>
+                        <td class="py-2 px-4 border-b">${formatDate(decision.dateEffective)}</td>
+                        <td class="py-2 px-4 border-b">${formatDate(decision.dateRetour)}</td>
+                    `;
+                    historyList.appendChild(row);
                 });
                 
                 noHistory.classList.add('hidden');
@@ -1321,6 +1411,97 @@
             }
             
             historyResult.classList.remove('hidden');
+        }
+        
+        // Function to export history to Excel
+        function exportHistoryToExcel() {
+            const matricule = document.getElementById('history-employee').value;
+            
+            if (!matricule) {
+                showNotification('Veuillez sélectionner un employé ou "Tous les employés"', 'warning');
+                return;
+            }
+            
+            // Get filtered decisions
+            let filteredDecisions = [];
+            let fileName = 'historique_sanctions';
+            
+            if (matricule === 'all') {
+                // Export all decisions
+                filteredDecisions = decisions;
+                fileName = 'historique_sanctions_tous_employes';
+            } else {
+                // Filter by employee
+                const employee = employees.find(emp => emp.matricule === matricule);
+                if (!employee) {
+                    showNotification('Employé non trouvé', 'error');
+                    return;
+                }
+                
+                filteredDecisions = decisions.filter(d => d.matricule === matricule);
+                fileName = `historique_sanctions_${employee.nom}_${employee.prenom}`.replace(/\s+/g, '_');
+            }
+            
+            if (filteredDecisions.length === 0) {
+                showNotification('Aucune donnée à exporter', 'warning');
+                return;
+            }
+            
+            // Prepare data for export
+            const exportData = filteredDecisions.map(decision => {
+                const employee = employees.find(emp => emp.matricule === decision.matricule) || { 
+                    nom: 'Inconnu', 
+                    prenom: '', 
+                    poste: 'Poste inconnu' 
+                };
+                
+                return {
+                    'Matricule': decision.matricule,
+                    'Nom': employee.nom,
+                    'Prénom': employee.prenom,
+                    'Référence': decision.reference,
+                    'Date Décision': formatDate(decision.date),
+                    'Motif': decision.motif,
+                    'Faute': decision.faute,
+                    'Sanction': decision.sanction,
+                    'Durée (jours)': decision.duree,
+                    'Date Début': formatDate(decision.dateEffective),
+                    'Date Reprise': formatDate(decision.dateRetour),
+                    'Responsable RH': decision.responsableRH
+                };
+            });
+            
+            // Create a new workbook
+            const wb = XLSX.utils.book_new();
+            
+            // Convert the data to a worksheet
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            
+            // Set column widths
+            const colWidths = [
+                { wch: 10 }, // Matricule
+                { wch: 15 }, // Nom
+                { wch: 15 }, // Prénom
+                { wch: 15 }, // Référence
+                { wch: 15 }, // Date Décision
+                { wch: 25 }, // Motif
+                { wch: 30 }, // Faute
+                { wch: 30 }, // Sanction
+                { wch: 15 }, // Durée
+                { wch: 15 }, // Date Début
+                { wch: 15 }, // Date Reprise
+                { wch: 20 }  // Responsable RH
+            ];
+            
+            ws['!cols'] = colWidths;
+            
+            // Add the worksheet to the workbook
+            XLSX.utils.book_append_sheet(wb, ws, "Historique Sanctions");
+            
+            // Generate the Excel file
+            XLSX.writeFile(wb, `${fileName}.xlsx`);
+            
+            showNotification('Historique exporté avec succès!', 'success');
         }
         
         // Decision Management
@@ -1632,6 +1813,11 @@
                 filterSanctions(this.value);
             }, 300));
             
+            // History filtering
+            document.getElementById('filter-history').addEventListener('input', debounce(function() {
+                filterHistory(this.value);
+            }, 300));
+            
             // Faute search with debounce
             document.getElementById('search-faute-btn').addEventListener('click', searchFaute);
             document.getElementById('search-faute').addEventListener('keyup', debounce(function(e) {
@@ -1645,8 +1831,9 @@
             document.getElementById('cancel-employee-btn').addEventListener('click', hideEmployeeModal);
             document.getElementById('save-employee-btn').addEventListener('click', saveEmployee);
             
-            // History view
+            // History view and export
             document.getElementById('view-history-btn').addEventListener('click', viewEmployeeHistory);
+            document.getElementById('export-history-btn').addEventListener('click', exportHistoryToExcel);
             
             // Import/Export
             document.getElementById('import-json').addEventListener('change', function(e) {
