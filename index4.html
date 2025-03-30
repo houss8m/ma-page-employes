@@ -1,0 +1,1692 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestion du Personnel et Sanctions</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.0/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        @media print {
+            .no-print {
+                display: none;
+            }
+            .print-only {
+                display: block;
+            }
+            body {
+                font-size: 12pt;
+            }
+        }
+        .print-only {
+            display: none;
+        }
+        .rtl {
+            direction: rtl;
+        }
+        :root {
+            --primary-color: #5D5CDE;
+            --bg-color: #FFFFFF;
+            --text-color: #1a202c;
+        }
+        .dark {
+            --bg-color: #181818;
+            --text-color: #fff;
+        }
+        .btn-primary {
+            background-color: var(--primary-color);
+        }
+        .tab-active {
+            border-bottom: 2px solid var(--primary-color);
+            color: var(--primary-color);
+        }
+        .tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        .tooltip .tooltip-text {
+            visibility: hidden;
+            width: 200px;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .tooltip:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+        .filter-input {
+            transition: all 0.3s ease;
+        }
+        .filter-input:focus {
+            box-shadow: 0 0 0 3px rgba(93, 92, 222, 0.3);
+        }
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: var(--primary-color);
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: var(--primary-color);
+        }
+        .disabled-date {
+            cursor: not-allowed;
+            background-color: #f3f4f6;
+        }
+        /* Spinner pour les états de chargement */
+        .spinner {
+            border: 3px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top: 3px solid var(--primary-color);
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .dark .spinner {
+            border-color: rgba(255, 255, 255, 0.1);
+            border-top-color: var(--primary-color);
+        }
+        /* Animation pour les messages d'alerte */
+        .alert {
+            animation: fadeInOut 4s ease-in-out;
+        }
+        @keyframes fadeInOut {
+            0% { opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+        .history-card {
+            transition: all 0.3s ease;
+        }
+        .history-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+    </style>
+</head>
+<body class="bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-colors duration-200">
+    <!-- Notifications -->
+    <div id="notification-container" class="fixed top-4 right-4 z-50" aria-live="polite"></div>
+    
+    <div class="container mx-auto px-4 py-8 max-w-6xl">
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold text-center">Gestion du Personnel et Sanctions</h1>
+            
+            <!-- Dark Mode Toggle -->
+            <div class="flex items-center">
+                <span class="mr-2 text-sm">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
+                </span>
+                <div class="relative inline-block w-10 mr-2 align-middle select-none">
+                    <input type="checkbox" id="darkModeToggle" name="darkModeToggle" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" aria-label="Activer/désactiver le mode sombre"/>
+                    <label for="darkModeToggle" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+                </div>
+                <span class="text-sm">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                    </svg>
+                </span>
+            </div>
+        </div>
+        
+        <!-- Tabs -->
+        <div class="flex mb-6 border-b no-print" role="tablist">
+            <button id="tab-employes" role="tab" aria-selected="true" aria-controls="section-employes" class="px-4 py-2 font-medium tab-active">Employés</button>
+            <button id="tab-sanctions" role="tab" aria-selected="false" aria-controls="section-sanctions" class="px-4 py-2 font-medium">Sanctions</button>
+            <button id="tab-historique" role="tab" aria-selected="false" aria-controls="section-historique" class="px-4 py-2 font-medium">Historique</button>
+        </div>
+        
+        <!-- Employees Section -->
+        <div id="section-employes" role="tabpanel" aria-labelledby="tab-employes" class="mb-8">
+            <div class="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg mb-4">
+                <div class="flex flex-col md:flex-row md:items-center mb-4">
+                    <div class="flex-1 mb-4 md:mb-0">
+                        <label for="search-matricule" class="block text-sm font-medium mb-1">Rechercher par Matricule</label>
+                        <input type="text" id="search-matricule" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="Entrez le matricule" aria-describedby="search-help">
+                        <p id="search-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Recherchez un employé par son matricule</p>
+                    </div>
+                    <div class="md:ml-4">
+                        <button id="search-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" aria-label="Rechercher un employé">
+                            Rechercher
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="employee-result" class="mt-4 hidden bg-white dark:bg-gray-700 p-4 rounded-md">
+                    <h3 class="text-xl font-semibold mb-2">Résultat de la recherche</h3>
+                    <div id="employee-details" class="space-y-2">
+                        <!-- Employee details will be displayed here -->
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg">
+                <h3 class="text-xl font-semibold mb-4">Gestion des Employés</h3>
+                
+                <div class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4 mb-4">
+                    <div class="flex-1">
+                        <label class="block text-sm font-medium mb-1">Importer des Employés (JSON)</label>
+                        <input type="file" id="import-json" class="w-full p-2 border rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white" accept=".json" aria-describedby="import-help">
+                        <p id="import-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Importez une liste d'employés au format JSON</p>
+                    </div>
+                    <div class="flex items-end space-x-2">
+                        <button id="export-employees-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50" aria-label="Exporter les employés">
+                            Exporter
+                        </button>
+                        <button id="add-employee-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50" aria-label="Ajouter un employé">
+                            Ajouter un Employé
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Filter for employees -->
+                <div class="mb-4">
+                    <label for="filter-employee" class="block text-sm font-medium mb-1">Filtre rapide</label>
+                    <input type="text" id="filter-employee" class="filter-input w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="Filtrer par nom, prénom ou poste" aria-describedby="filter-employee-help">
+                    <p id="filter-employee-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Filtrez les employés pendant que vous tapez</p>
+                </div>
+                
+                <div id="employees-table-container" class="overflow-x-auto">
+                    <table id="employees-table" class="min-w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600" aria-label="Liste des employés">
+                        <thead>
+                            <tr class="bg-gray-200 dark:bg-gray-800">
+                                <th class="py-2 px-4 border-b" scope="col">Matricule</th>
+                                <th class="py-2 px-4 border-b" scope="col">Nom</th>
+                                <th class="py-2 px-4 border-b" scope="col">Prénom</th>
+                                <th class="py-2 px-4 border-b" scope="col">Poste</th>
+                                <th class="py-2 px-4 border-b" scope="col">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="employees-list">
+                            <!-- Employees will be listed here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Sanctions Section -->
+        <div id="section-sanctions" role="tabpanel" aria-labelledby="tab-sanctions" class="mb-8 hidden">
+            <div class="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg mb-4">
+                <div class="flex flex-col md:flex-row md:items-center mb-4">
+                    <div class="flex-1 mb-4 md:mb-0">
+                        <label for="search-faute" class="block text-sm font-medium mb-1">Rechercher une Faute</label>
+                        <input type="text" id="search-faute" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="Entrez la faute" aria-describedby="search-faute-help">
+                        <p id="search-faute-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Recherchez par mot-clé dans les fautes</p>
+                    </div>
+                    <div class="md:ml-4">
+                        <button id="search-faute-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" aria-label="Rechercher une faute">
+                            Rechercher
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="sanction-result" class="mt-4 hidden bg-white dark:bg-gray-700 p-4 rounded-md">
+                    <h3 class="text-xl font-semibold mb-2">Résultat de la recherche</h3>
+                    <div id="sanction-details" class="space-y-2 rtl">
+                        <!-- Sanction details will be displayed here -->
+                    </div>
+                    <div class="mt-4">
+                        <button id="create-decision-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50" aria-label="Créer une décision">
+                            Créer Décision
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg">
+                <h3 class="text-xl font-semibold mb-4">Gestion des Sanctions</h3>
+                
+                <div class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4 mb-4">
+                    <div class="flex-1">
+                        <label class="block text-sm font-medium mb-1">Importer des Sanctions (Excel)</label>
+                        <input type="file" id="import-excel" class="w-full p-2 border rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white" accept=".xlsx,.xls" aria-describedby="import-excel-help">
+                        <p id="import-excel-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Importez une liste de sanctions au format Excel</p>
+                    </div>
+                    <div class="flex items-end space-x-2">
+                        <button id="export-sanctions-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" aria-label="Exporter les sanctions">
+                            Exporter
+                        </button>
+                        <button id="export-template-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50" aria-label="Exporter le modèle Excel">
+                            Exporter Modèle Excel
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Filter for sanctions -->
+                <div class="mb-4">
+                    <label for="filter-sanction" class="block text-sm font-medium mb-1">Filtre rapide</label>
+                    <input type="text" id="filter-sanction" class="filter-input w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" placeholder="Filtrer par faute ou sanction" aria-describedby="filter-sanction-help">
+                    <p id="filter-sanction-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Filtrez les sanctions pendant que vous tapez</p>
+                </div>
+                
+                <div id="sanctions-table-container" class="overflow-x-auto mt-4">
+                    <table id="sanctions-table" class="min-w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600" aria-label="Liste des sanctions">
+                        <thead>
+                            <tr class="bg-gray-200 dark:bg-gray-800">
+                                <th class="py-2 px-4 border-b" scope="col">Faute</th>
+                                <th class="py-2 px-4 border-b" scope="col">Degré</th>
+                                <th class="py-2 px-4 border-b" scope="col">Sanction</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sanctions-list" class="rtl">
+                            <!-- Sanctions will be listed here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Historique Section -->
+        <div id="section-historique" role="tabpanel" aria-labelledby="tab-historique" class="mb-8 hidden">
+            <div class="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg mb-4">
+                <h3 class="text-xl font-semibold mb-4">Historique des Sanctions par Employé</h3>
+                
+                <div class="flex flex-col md:flex-row md:items-end space-y-4 md:space-y-0 md:space-x-4 mb-4">
+                    <div class="flex-1">
+                        <label for="history-employee" class="block text-sm font-medium mb-1">Sélectionner un Employé</label>
+                        <select id="history-employee" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" aria-describedby="history-employee-help">
+                            <option value="">-- Sélectionner un employé --</option>
+                        </select>
+                        <p id="history-employee-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Sélectionnez un employé pour voir son historique de sanctions</p>
+                    </div>
+                    <div>
+                        <button id="view-history-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" aria-label="Afficher l'historique">
+                            Afficher l'Historique
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="history-result" class="mt-4 hidden">
+                    <h4 class="text-lg font-medium mb-2">Sanctions pour: <span id="history-employee-name"></span></h4>
+                    <div id="employee-history" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+                        <!-- History cards will be displayed here -->
+                    </div>
+                    <p id="no-history" class="text-gray-500 dark:text-gray-400 mt-4 text-center hidden">Aucune sanction trouvée pour cet employé.</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Decision Form -->
+        <div id="decision-form" class="hidden mb-8 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg">
+            <h3 class="text-xl font-semibold mb-4">Formulaire de Décision de Sanction</h3>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label for="decision-employee" class="block text-sm font-medium mb-1">Sélectionner un Employé <span class="text-red-500">*</span></label>
+                    <select id="decision-employee" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" required aria-describedby="employee-required">
+                        <option value="">-- Sélectionner un employé --</option>
+                    </select>
+                    <p id="employee-required" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Champ obligatoire</p>
+                </div>
+                <div>
+                    <label for="decision-date" class="block text-sm font-medium mb-1">Date de la Décision <span class="text-red-500">*</span></label>
+                    <input type="date" id="decision-date" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" required aria-describedby="date-required">
+                    <p id="date-required" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Champ obligatoire</p>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label for="decision-reference-num" class="block text-sm font-medium mb-1">Numéro de Référence <span class="text-red-500">*</span></label>
+                    <div class="flex items-center">
+                        <input type="number" id="decision-reference-num" class="w-20 p-2 border rounded-l-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" min="1" value="1" step="1" required aria-label="Numéro de référence">
+                        <span class="bg-gray-200 dark:bg-gray-600 px-2 py-2 text-gray-700 dark:text-gray-300">/RH/DCS/</span>
+                        <input type="number" id="decision-reference-year" class="w-24 p-2 border rounded-r-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" min="2000" max="2100" required aria-label="Année de référence">
+                    </div>
+                    <div class="flex justify-end mt-1">
+                        <button id="auto-reference-btn" class="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 focus:outline-none" aria-label="Générer une référence automatiquement">
+                            Générer automatiquement
+                        </button>
+                    </div>
+                </div>
+                <div>
+                    <label for="decision-effective-date" class="block text-sm font-medium mb-1">Date Début Sanction <span class="text-red-500">*</span></label>
+                    <input type="date" id="decision-effective-date" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" required aria-describedby="effective-date-help">
+                    <p id="effective-date-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Date de début de la sanction</p>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label for="decision-duree" class="block text-sm font-medium mb-1">Durée de la Sanction (jours) <span class="text-red-500">*</span></label>
+                    <input type="number" id="decision-duree" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" min="1" value="1" required aria-describedby="duree-help">
+                    <p id="duree-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Nombre de jours de sanction</p>
+                </div>
+                <div>
+                    <label for="decision-return-date" class="block text-sm font-medium mb-1">Date de Reprise <span class="text-red-500">*</span></label>
+                    <input type="date" id="decision-return-date" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled-date" required aria-describedby="return-date-help" readonly>
+                    <p id="return-date-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Calculée automatiquement</p>
+                </div>
+            </div>
+            
+            <div class="mb-4">
+                <label for="decision-motif" class="block text-sm font-medium mb-1">Motif <span class="text-red-500">*</span></label>
+                <input type="text" id="decision-motif" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" required aria-describedby="motif-help">
+                <p id="motif-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Motif principal de la sanction</p>
+            </div>
+            
+            <div class="mb-4">
+                <label for="decision-faute" class="block text-sm font-medium mb-1">Faute <span class="text-red-500">*</span></label>
+                <select id="decision-faute" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white rtl" required aria-describedby="faute-help">
+                    <option value="">-- Sélectionner une faute --</option>
+                </select>
+                <p id="faute-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Type de faute commise</p>
+            </div>
+            
+            <div class="mb-4">
+                <label for="decision-sanction" class="block text-sm font-medium mb-1">Sanction Appliquée <span class="text-red-500">*</span></label>
+                <select id="decision-sanction" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white rtl" required aria-describedby="sanction-help">
+                    <option value="">-- Sélectionner une sanction --</option>
+                </select>
+                <p id="sanction-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Type de sanction à appliquer</p>
+            </div>
+            
+            <div class="mb-4">
+                <label for="decision-manquements" class="block text-sm font-medium mb-1">Manquements constatés <span class="text-red-500">*</span></label>
+                <textarea id="decision-manquements" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" rows="3" placeholder="Entrez les manquements, un par ligne" required aria-describedby="manquements-help"></textarea>
+                <p id="manquements-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Listez les manquements, un par ligne</p>
+            </div>
+            
+            <div class="mb-4">
+                <label for="decision-rh-name" class="block text-sm font-medium mb-1">Nom du Responsable RH <span class="text-red-500">*</span></label>
+                <input type="text" id="decision-rh-name" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" required aria-describedby="rh-name-help">
+                <p id="rh-name-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Nom complet du responsable RH</p>
+            </div>
+            
+            <div class="flex justify-between">
+                <button id="cancel-decision-btn" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50" aria-label="Annuler">
+                    Annuler
+                </button>
+                <button id="preview-decision-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" aria-label="Aperçu">
+                    Aperçu
+                </button>
+                <button id="save-decision-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50" aria-label="Enregistrer et Imprimer">
+                    Enregistrer et Imprimer
+                </button>
+            </div>
+        </div>
+        
+        <!-- Print Preview -->
+        <div id="print-preview" class="hidden mb-8">
+            <div class="bg-white p-8 rounded-lg shadow-lg">
+                <div class="flex justify-between mb-8 no-print">
+                    <button id="back-from-preview-btn" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50" aria-label="Retour">
+                        Retour
+                    </button>
+                    <div class="flex space-x-2">
+                        <button id="export-pdf-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50" aria-label="Exporter en PDF">
+                            Exporter PDF
+                        </button>
+                        <button id="print-decision-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" aria-label="Imprimer">
+                            Imprimer
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="decision-document" class="border p-8 max-w-4xl mx-auto">
+                    <div class="text-center mb-5">
+                        <h2 class="text-2xl font-bold">EASY WAY ELECTRO</h2>
+                        <p class="text-sm">VENTE PRODUITS ELECTRONIQUES ET ELECROMENAGERS</p>
+                        <p class="text-sm">Siège social: 04 Rue Ahmed Ouaked Delybrahim-Alger</p>
+                    </div>
+                    
+                    <div class="flex justify-between mt-6 mb-8">
+                        <div>
+                            <p class="font-medium">Référence : <span id="preview-reference"></span></p>
+                        </div>
+                        <div>
+                            <p class="font-medium">ALGER LE: <span id="preview-date"></span></p>
+                        </div>
+                    </div>
+                    
+                    <div class="text-center mb-6">
+                        <h2 class="text-xl font-bold underline">Décision de mise à pied</h2>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <p class="font-medium">Salarié : <span id="preview-name"></span></p>
+                        <p class="font-medium">Matricule : <span id="preview-matricule"></span></p>
+                        <p class="font-medium">Poste : <span id="preview-poste"></span></p>
+                        <p class="font-medium mt-2">Motif: <span id="preview-motif"></span></p>
+                    </div>
+                    
+                    <div class="my-6">
+                        <p>Après examen de votre questionnaire, il a été décidé de vous infliger une mise à pied disciplinaire de <span id="preview-duree"></span> jours ouvrés.</p>
+                    </div>
+                    
+                    <div class="mb-6">
+                        <p class="font-medium">Nous avons constaté les manquements suivants :</p>
+                        <ul id="preview-manquements-list" class="list-disc pl-8 mt-2">
+                            <!-- Manquements seront ajoutés ici -->
+                        </ul>
+                    </div>
+                    
+                    <div class="my-6">
+                        <p>Cette mise à pied sera effective du <span id="preview-effective-date"></span> au <span id="preview-end-date"></span></p>
+                        <p class="mt-1">Reprise du travail le : <span id="preview-return-date"></span></p>
+                        <p class="mt-4">Pendant cette période, vous ne serez pas rémunéré.</p>
+                    </div>
+                    
+                    <div class="mt-10 flex flex-col items-end">
+                        <p class="font-medium">Le Responsable des ressources humaines</p>
+                        <p id="preview-rh-name" class="mt-16 border-t border-black pt-1 w-64 text-center"></p>
+                    </div>
+                    
+                    <div class="mt-8 border-t pt-4">
+                        <p class="italic">Tout manquement ultérieur pourra faire l'objet de sanctions plus sévères, pouvant aller jusqu'au licenciement.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Modal for adding/editing employee -->
+        <div id="employee-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg w-full max-w-md" role="dialog" aria-labelledby="modal-title" aria-modal="true">
+                <h3 id="modal-title" class="text-xl font-semibold mb-4">Ajouter un Employé</h3>
+                
+                <div class="mb-4">
+                    <label for="employee-matricule" class="block text-sm font-medium mb-1">Matricule <span class="text-red-500">*</span></label>
+                    <input type="text" id="employee-matricule" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" required pattern="^[0-9]+$" aria-describedby="matricule-help">
+                    <p id="matricule-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Uniquement des chiffres</p>
+                    <p id="duplicate-matricule-error" class="text-xs text-red-500 mt-1 hidden">Ce matricule existe déjà</p>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="employee-nom" class="block text-sm font-medium mb-1">Nom <span class="text-red-500">*</span></label>
+                    <input type="text" id="employee-nom" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" required pattern="^[A-Za-zÀ-ÖØ-öø-ÿ\s-]+$" aria-describedby="nom-help">
+                    <p id="nom-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Lettres, espaces et tirets uniquement</p>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="employee-prenom" class="block text-sm font-medium mb-1">Prénom <span class="text-red-500">*</span></label>
+                    <input type="text" id="employee-prenom" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" required pattern="^[A-Za-zÀ-ÖØ-öø-ÿ\s-]+$" aria-describedby="prenom-help">
+                    <p id="prenom-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Lettres, espaces et tirets uniquement</p>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="employee-poste" class="block text-sm font-medium mb-1">Poste <span class="text-red-500">*</span></label>
+                    <input type="text" id="employee-poste" class="w-full p-2 border rounded-md text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white" required aria-describedby="poste-help">
+                    <p id="poste-help" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Intitulé du poste occupé</p>
+                </div>
+                
+                <div class="flex justify-end space-x-2">
+                    <button id="cancel-employee-btn" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50" aria-label="Annuler">
+                        Annuler
+                    </button>
+                    <button id="save-employee-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50" aria-label="Enregistrer">
+                        Enregistrer
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Dark mode management
+        function initDarkMode() {
+            // Check stored preference first
+            const storedTheme = sessionStorage.getItem('theme');
+            if (storedTheme) {
+                if (storedTheme === 'dark') {
+                    document.documentElement.classList.add('dark');
+                    document.getElementById('darkModeToggle').checked = true;
+                } else {
+                    document.documentElement.classList.remove('dark');
+                    document.getElementById('darkModeToggle').checked = false;
+                }
+            } else {
+                // Fall back to system preference
+                if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                    document.documentElement.classList.add('dark');
+                    document.getElementById('darkModeToggle').checked = true;
+                }
+            }
+            
+            // Listen for changes to system preference
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
+                // Only apply if user hasn't manually set a preference
+                if (!sessionStorage.getItem('theme')) {
+                    if (event.matches) {
+                        document.documentElement.classList.add('dark');
+                        document.getElementById('darkModeToggle').checked = true;
+                    } else {
+                        document.documentElement.classList.remove('dark');
+                        document.getElementById('darkModeToggle').checked = false;
+                    }
+                }
+            });
+            
+            // Set up the toggle
+            document.getElementById('darkModeToggle').addEventListener('change', function() {
+                if (this.checked) {
+                    document.documentElement.classList.add('dark');
+                    sessionStorage.setItem('theme', 'dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                    sessionStorage.setItem('theme', 'light');
+                }
+                showNotification('Mode d\'affichage modifié', 'info');
+            });
+        }
+        
+        // Initial data
+        let employees = [
+            { matricule: "9", nom: "CHETTOUH", prenom: "FATMA", poste: "Femme de ménage" },
+            { matricule: "11", nom: "DAAS", prenom: "FOUAD", poste: "Responsable Commercial" },
+            { matricule: "33", nom: "SAHNINE", prenom: "ASSIA", poste: "Femme de ménage" },
+            { matricule: "25", nom: "BOUAZZA", prenom: "SMAIL", poste: "Commercial" },
+            { matricule: "32", nom: "GUILI", prenom: "ZAKARIA", poste: "Commercial" },
+            { matricule: "53", nom: "KHAREF", prenom: "ABDALLAH", poste: "Gestionnaire de stock" },
+            { matricule: "58", nom: "ALILI", prenom: "HOUSSEM EDDINE", poste: "RH Manager" },
+            { matricule: "64", nom: "LAHMAR", prenom: "YACINE", poste: "Livreur" },
+            { matricule: "65", nom: "BOUKHALCHOUFA", prenom: "MOHAMED", poste: "Livreur" },
+            { matricule: "69", nom: "LAZEREG", prenom: "YACINE", poste: "Manager Showroom" },
+            { matricule: "71", nom: "ZEDIRA", prenom: "ZINEDDINE AHMED ESSALIH", poste: "Manager Showroom" },
+            { matricule: "81", nom: "MEDJKANE", prenom: "DJAFFER", poste: "Commercial" },
+            { matricule: "82", nom: "BELHOUL", prenom: "MOHAMED AMIR", poste: "Commercial" },
+            { matricule: "84", nom: "MEDJERAB", prenom: "DJALIL-ABDERRAHMANE", poste: "Commercial" },
+            { matricule: "93", nom: "AIDEL", prenom: "SAID", poste: "Commercial" },
+            { matricule: "94", nom: "REBBACHE", prenom: "TAREK KARIM", poste: "Aide livreur" },
+            { matricule: "96", nom: "BATATA", prenom: "FOUAD", poste: "Manager Showroom" },
+            { matricule: "97", nom: "DAAS", prenom: "CHOUAIB", poste: "Responsable Combtabilité et finance" },
+            { matricule: "99", nom: "HAMANA", prenom: "MOHAMED WALID", poste: "Commercial" },
+            { matricule: "101", nom: "DEHBI", prenom: "IBRAHIM", poste: "Aide livreur" },
+            { matricule: "102", nom: "BOUDEKHANA", prenom: "AKRAM", poste: "Commercial" },
+            { matricule: "103", nom: "AZOUAOUI", prenom: "MOHAMED TAHAR", poste: "Commercial" },
+            { matricule: "105", nom: "IBBOU", prenom: "MOHAMED MEHDI", poste: "Aide magasinier" },
+            { matricule: "106", nom: "HALALCHI", prenom: "MOHAMED ROCHDI", poste: "Commercial" },
+            { matricule: "107", nom: "BENSOTRA", prenom: "ABDELKADER", poste: "Commercial" },
+            { matricule: "108", nom: "GOUTAL", prenom: "MELYSSA", poste: "Commercial" },
+            { matricule: "108", nom: "HAMMICHE", prenom: "ABDELKADER", poste: "Commercial" },
+            { matricule: "109", nom: "AIT TALEB", prenom: "MOHAMED ANIS", poste: "Comptable" },
+            { matricule: "110", nom: "DENDANI", prenom: "IMAD EDDINE", poste: "Social Media Manager" },
+            { matricule: "111", nom: "BELAYADI", prenom: "SIDALI", poste: "Commercial" },
+            { matricule: "112", nom: "BENHAMMADA", prenom: "SOFIANE", poste: "Agent polyvalent" }
+        ];
+        
+        let sanctions = [
+            // Fautes de degré 1
+            { faute: "عدم احترام ساعات العمل", degre: "1", sanction: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام" },
+            { faute: "الوصول المتأخر أكثر من مرتين في الشهر دون سبب", degre: "1", sanction: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام" },
+            { faute: "التأخر عن استئناف العمل بعد أوقات الراحة", degre: "1", sanction: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام" },
+            { faute: "الغياب غير الشرعي من يوم واحد (01) إلى يومين (02)", degre: "1", sanction: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام" },
+            { faute: "ترك منصب العمل بصفة مؤقتة وقصيرة بدون رخصة وبدون سبب مشروع", degre: "1", sanction: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام" },
+            { faute: "الرفض غير المبرر لدعوة الشركة لأداء عمل استعجالي خلال يوم عطلة قانونية أو يوم الراحة", degre: "1", sanction: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام" },
+            { faute: "التنقل أو التجمع دون سبب في أماكن العمل خلال أوقات العمل", degre: "1", sanction: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام" },
+            { faute: "اللجوء إلى المكاتب الإدارية أثناء أوقات العمل دون سبب مشروع", degre: "1", sanction: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام" },
+            { faute: "استعمال الهاتف الشخصي أو السماعات أثناء أوقات العمل", degre: "1", sanction: "التنبيه الكتابي / التوبيخ / التوقيف عن العمل من يوم واحد إلى ثلاث أيام" },
+            
+            // Fautes de degré 2
+            { faute: "حالة العودة لخطأ من الدرجة الأولى تمت معاقبته عليه في نفس العام", degre: "2", sanction: "التوقيف عن العمل من أربعة (04) إلى خمسة عشر (15) أيام / الشطب من قائمة التأهيل / تخفيض الرتبة من درجة الى درجتين" },
+            { faute: "غياب الإتقان والفعالية، مع التهاون الواضح عند القيام بالعمل", degre: "2", sanction: "التوقيف عن العمل من أربعة (04) إلى خمسة عشر (15) أيام / الشطب من قائمة التأهيل / تخفيض الرتبة من درجة الى درجتين" },
+            { faute: "النوم خلال أوقات العمل", degre: "2", sanction: "التوقيف عن العمل من أربعة (04) إلى خمسة عشر (15) أيام / الشطب من قائمة التأهيل / تخفيض الرتبة من درجة الى درجتين" },
+            { faute: "تغيير الملابس ونزعها خلال أوقات العمل", degre: "2", sanction: "التوقيف عن العمل من أربعة (04) إلى خمسة عشر (15) أيام / الشطب من قائمة التأهيل / تخفيض الرتبة من درجة الى درجتين" },
+            { faute: "الخروج دون طلب ترخيص من الإدارة", degre: "2", sanction: "التوقيف عن العمل من أربعة (04) إلى خمسة عشر (15) أيام / الشطب من قائمة التأهيل / تخفيض الرتبة من درجة الى درجتين" },
+            
+            // Fautes de degré 3
+            { faute: "تكرار خطأ من الدرجة الثانية تمت معاقبته عليه في نفس العام", degre: "3", sanction: "التوقيف عن العمل من إحدى عشرة (11) إلى ثلاثين (30) يوما / التنزيل الى الرتبة السفلى مباشرة / التسريح" },
+            { faute: "السرقة", degre: "3", sanction: "التوقيف عن العمل من إحدى عشرة (11) إلى ثلاثين (30) يوما / التنزيل الى الرتبة السفلى مباشرة / التسريح" },
+            { faute: "القيام بأعمال عنف", degre: "3", sanction: "التوقيف عن العمل من إحدى عشرة (11) إلى ثلاثين (30) يوما / التنزيل الى الرتبة السفلى مباشرة / التسريح" },
+            { faute: "التحرش الجنسي أو التحرش المعنوي", degre: "3", sanction: "التوقيف عن العمل من إحدى عشرة (11) إلى ثلاثين (30) يوما / التنزيل الى الرتبة السفلى مباشرة / التسريح" },
+            { faute: "استغلال معلومات العملاء أو التواصل معهم لأغراض شخصية", degre: "3", sanction: "التوقيف عن العمل من إحدى عشرة (11) إلى ثلاثين (30) يوما / التنزيل الى الرتبة السفلى مباشرة / التسريح" }
+        ];
+        
+        // Decision history storage
+        let decisions = [];
+        
+        // Utility Functions
+        // Debounce function for input events
+        function debounce(func, wait) {
+            let timeout;
+            return function(...args) {
+                const context = this;
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(context, args), wait);
+            };
+        }
+        
+        // Show notification function
+        function showNotification(message, type = 'success') {
+            const container = document.getElementById('notification-container');
+            const notification = document.createElement('div');
+            
+            let bgColor, textColor;
+            switch(type) {
+                case 'error':
+                    bgColor = 'bg-red-500';
+                    textColor = 'text-white';
+                    break;
+                case 'warning':
+                    bgColor = 'bg-yellow-500';
+                    textColor = 'text-gray-900';
+                    break;
+                case 'info':
+                    bgColor = 'bg-blue-500';
+                    textColor = 'text-white';
+                    break;
+                default: // success
+                    bgColor = 'bg-green-500';
+                    textColor = 'text-white';
+            }
+            
+            notification.className = `${bgColor} ${textColor} p-4 rounded-lg shadow-lg mb-3 alert`;
+            notification.setAttribute('role', 'alert');
+            notification.textContent = message;
+            
+            container.appendChild(notification);
+            
+            // Remove notification after 5 seconds
+            setTimeout(() => {
+                notification.remove();
+            }, 5000);
+        }
+        
+        // Check for duplicate matricule
+        function isDuplicateMatricule(matricule, currentIndex = -1) {
+            return employees.some((emp, index) => 
+                emp.matricule === matricule && index !== currentIndex
+            );
+        }
+        
+        // Format date for display
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('fr-FR', { 
+                day: '2-digit', 
+                month: '2-digit', 
+                year: 'numeric' 
+            });
+        }
+        
+        // Calculate end date based on start date and duration
+        function calculateEndDate(startDate, durationDays) {
+            const date = new Date(startDate);
+            date.setDate(date.getDate() + parseInt(durationDays) - 1);
+            return date;
+        }
+        
+        // Calculate return date (end date + 1 day)
+        function calculateReturnDate(startDate, durationDays) {
+            const date = new Date(startDate);
+            date.setDate(date.getDate() + parseInt(durationDays));
+            return date;
+        }
+        
+        // Get the highest reference number
+        function getNextReferenceNumber() {
+            if (decisions.length === 0) return 1;
+            
+            const maxRef = decisions.reduce((max, decision) => {
+                const refParts = decision.reference.split('/');
+                const refNum = parseInt(refParts[0]);
+                return refNum > max ? refNum : max;
+            }, 0);
+            
+            return maxRef + 1;
+        }
+        
+        // Validate form input with regex
+        function validateInput(input, regex, errorMessage) {
+            const value = input.value.trim();
+            const isValid = regex.test(value);
+            
+            const helpElement = document.getElementById(`${input.id}-help`);
+            if (!isValid && value !== '') {
+                input.classList.add('border-red-500');
+                helpElement.classList.add('text-red-500');
+                helpElement.textContent = errorMessage;
+                return false;
+            } else {
+                input.classList.remove('border-red-500');
+                helpElement.classList.remove('text-red-500');
+                helpElement.textContent = input.getAttribute('aria-describedby') ? 
+                    document.getElementById(input.getAttribute('aria-describedby')).textContent : '';
+                return true;
+            }
+        }
+        
+        // DOM Elements
+        const tabEmployes = document.getElementById('tab-employes');
+        const tabSanctions = document.getElementById('tab-sanctions');
+        const tabHistorique = document.getElementById('tab-historique');
+        const sectionEmployes = document.getElementById('section-employes');
+        const sectionSanctions = document.getElementById('section-sanctions');
+        const sectionHistorique = document.getElementById('section-historique');
+        
+        // Tab Switching
+        function switchTab(tabId) {
+            // Remove active state from all tabs
+            [tabEmployes, tabSanctions, tabHistorique].forEach(tab => {
+                tab.classList.remove('tab-active');
+                tab.setAttribute('aria-selected', 'false');
+            });
+            
+            // Hide all sections
+            [sectionEmployes, sectionSanctions, sectionHistorique, 
+             document.getElementById('decision-form'), document.getElementById('print-preview')].forEach(section => {
+                section.classList.add('hidden');
+            });
+            
+            // Set active tab and show corresponding section
+            if (tabId === 'tab-employes') {
+                tabEmployes.classList.add('tab-active');
+                tabEmployes.setAttribute('aria-selected', 'true');
+                sectionEmployes.classList.remove('hidden');
+            } else if (tabId === 'tab-sanctions') {
+                tabSanctions.classList.add('tab-active');
+                tabSanctions.setAttribute('aria-selected', 'true');
+                sectionSanctions.classList.remove('hidden');
+            } else if (tabId === 'tab-historique') {
+                tabHistorique.classList.add('tab-active');
+                tabHistorique.setAttribute('aria-selected', 'true');
+                sectionHistorique.classList.remove('hidden');
+            }
+        }
+        
+        tabEmployes.addEventListener('click', () => switchTab('tab-employes'));
+        tabSanctions.addEventListener('click', () => switchTab('tab-sanctions'));
+        tabHistorique.addEventListener('click', () => switchTab('tab-historique'));
+        
+        // Employees Management
+        function loadEmployees() {
+            const tableBody = document.getElementById('employees-list');
+            const employeeSelect = document.getElementById('decision-employee');
+            const historyEmployeeSelect = document.getElementById('history-employee');
+            
+            tableBody.innerHTML = '';
+            employeeSelect.innerHTML = '<option value="">-- Sélectionner un employé --</option>';
+            historyEmployeeSelect.innerHTML = '<option value="">-- Sélectionner un employé --</option>';
+            
+            employees.forEach((employee, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="py-2 px-4 border-b">${employee.matricule}</td>
+                    <td class="py-2 px-4 border-b">${employee.nom}</td>
+                    <td class="py-2 px-4 border-b">${employee.prenom}</td>
+                    <td class="py-2 px-4 border-b">${employee.poste}</td>
+                    <td class="py-2 px-4 border-b">
+                        <button class="edit-employee bg-blue-500 hover:bg-blue-600 text-white py-1 px-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" data-index="${index}" aria-label="Modifier l'employé ${employee.nom}">
+                            Modifier
+                        </button>
+                        <button class="delete-employee bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50" data-index="${index}" aria-label="Supprimer l'employé ${employee.nom}">
+                            Supprimer
+                        </button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+                
+                // Add to employee selects
+                const option = document.createElement('option');
+                option.value = employee.matricule;
+                option.textContent = `${employee.matricule} - ${employee.nom} ${employee.prenom}`;
+                option.dataset.nom = employee.nom;
+                option.dataset.prenom = employee.prenom;
+                option.dataset.poste = employee.poste;
+                employeeSelect.appendChild(option.cloneNode(true));
+                historyEmployeeSelect.appendChild(option);
+            });
+            
+            // Add event listeners for edit and delete buttons
+            document.querySelectorAll('.edit-employee').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const index = e.target.dataset.index;
+                    editEmployee(index);
+                });
+            });
+            
+            document.querySelectorAll('.delete-employee').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const index = e.target.dataset.index;
+                    deleteEmployee(index);
+                });
+            });
+        }
+        
+        // Function to filter employees table
+        function filterEmployees(searchTerm) {
+            const tableRows = document.querySelectorAll('#employees-list tr');
+            const searchLower = searchTerm.toLowerCase();
+            
+            tableRows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                if (text.includes(searchLower)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+        
+        // Function to filter sanctions table
+        function filterSanctions(searchTerm) {
+            const tableRows = document.querySelectorAll('#sanctions-list tr');
+            const searchLower = searchTerm.toLowerCase();
+            
+            tableRows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                if (text.includes(searchLower)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+        
+        function searchEmployee() {
+            const matricule = document.getElementById('search-matricule').value.trim();
+            const resultDiv = document.getElementById('employee-result');
+            const detailsDiv = document.getElementById('employee-details');
+            
+            if (!matricule) {
+                showNotification('Veuillez entrer un matricule', 'warning');
+                return;
+            }
+            
+            const employee = employees.find(emp => emp.matricule === matricule);
+            
+            if (employee) {
+                // Check for history
+                const employeeDecisions = decisions.filter(d => d.matricule === matricule);
+                
+                detailsDiv.innerHTML = `
+                    <p><strong>Matricule:</strong> ${employee.matricule}</p>
+                    <p><strong>Nom:</strong> ${employee.nom}</p>
+                    <p><strong>Prénom:</strong> ${employee.prenom}</p>
+                    <p><strong>Poste:</strong> ${employee.poste}</p>
+                    ${employeeDecisions.length > 0 ? 
+                      `<p class="mt-2"><strong>Sanctions:</strong> ${employeeDecisions.length} décision(s) enregistrée(s)</p>` : 
+                      '<p class="mt-2 text-gray-500">Aucune sanction enregistrée</p>'}
+                    ${employeeDecisions.length > 0 ? 
+                      `<button id="view-employee-history" class="mt-2 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm focus:outline-none focus:underline" data-matricule="${matricule}">
+                        Voir l'historique des sanctions
+                      </button>` : ''}
+                `;
+                resultDiv.classList.remove('hidden');
+                
+                // Add event listener for history button
+                if (employeeDecisions.length > 0) {
+                    document.getElementById('view-employee-history').addEventListener('click', function() {
+                        const matricule = this.dataset.matricule;
+                        document.getElementById('history-employee').value = matricule;
+                        switchTab('tab-historique');
+                        viewEmployeeHistory();
+                    });
+                }
+            } else {
+                detailsDiv.innerHTML = `<p class="text-red-500">Aucun employé trouvé avec ce matricule</p>`;
+                resultDiv.classList.remove('hidden');
+            }
+        }
+        
+        function showEmployeeModal(edit = false, index = -1) {
+            const modal = document.getElementById('employee-modal');
+            const modalTitle = document.getElementById('modal-title');
+            const matriculeInput = document.getElementById('employee-matricule');
+            const nomInput = document.getElementById('employee-nom');
+            const prenomInput = document.getElementById('employee-prenom');
+            const posteInput = document.getElementById('employee-poste');
+            const duplicateError = document.getElementById('duplicate-matricule-error');
+            
+            modal.classList.remove('hidden');
+            duplicateError.classList.add('hidden');
+            
+            // Set focus on first input
+            setTimeout(() => {
+                matriculeInput.focus();
+            }, 100);
+            
+            if (edit && index >= 0) {
+                modalTitle.textContent = 'Modifier un Employé';
+                const employee = employees[index];
+                matriculeInput.value = employee.matricule;
+                nomInput.value = employee.nom;
+                prenomInput.value = employee.prenom;
+                posteInput.value = employee.poste;
+                modal.dataset.index = index;
+                modal.dataset.edit = 'true';
+            } else {
+                modalTitle.textContent = 'Ajouter un Employé';
+                matriculeInput.value = '';
+                nomInput.value = '';
+                prenomInput.value = '';
+                posteInput.value = '';
+                modal.dataset.edit = 'false';
+            }
+            
+            // Check for duplicate matricule on input
+            matriculeInput.addEventListener('input', function() {
+                if (this.value.trim() !== '') {
+                    const currentIndex = modal.dataset.edit === 'true' ? parseInt(modal.dataset.index) : -1;
+                    const isDuplicate = isDuplicateMatricule(this.value.trim(), currentIndex);
+                    duplicateError.classList.toggle('hidden', !isDuplicate);
+                } else {
+                    duplicateError.classList.add('hidden');
+                }
+            });
+        }
+        
+        function hideEmployeeModal() {
+            document.getElementById('employee-modal').classList.add('hidden');
+        }
+        
+        function saveEmployee() {
+            const modal = document.getElementById('employee-modal');
+            const matricule = document.getElementById('employee-matricule').value.trim();
+            const nom = document.getElementById('employee-nom').value.trim();
+            const prenom = document.getElementById('employee-prenom').value.trim();
+            const poste = document.getElementById('employee-poste').value.trim();
+            const duplicateError = document.getElementById('duplicate-matricule-error');
+            
+            // Validation
+            let isValid = true;
+            
+            isValid = isValid && validateInput(
+                document.getElementById('employee-matricule'),
+                /^[0-9]+$/,
+                'Le matricule doit contenir uniquement des chiffres'
+            );
+            
+            isValid = isValid && validateInput(
+                document.getElementById('employee-nom'),
+                /^[A-Za-zÀ-ÖØ-öø-ÿ\s-]+$/,
+                'Le nom doit contenir uniquement des lettres, espaces et tirets'
+            );
+            
+            isValid = isValid && validateInput(
+                document.getElementById('employee-prenom'),
+                /^[A-Za-zÀ-ÖØ-öø-ÿ\s-]+$/,
+                'Le prénom doit contenir uniquement des lettres, espaces et tirets'
+            );
+            
+            if (!matricule || !nom || !prenom || !poste) {
+                showNotification('Tous les champs sont obligatoires', 'error');
+                return;
+            }
+            
+            // Check for duplicate matricule
+            const isEdit = modal.dataset.edit === 'true';
+            const currentIndex = isEdit ? parseInt(modal.dataset.index) : -1;
+            
+            if (isDuplicateMatricule(matricule, currentIndex)) {
+                duplicateError.classList.remove('hidden');
+                return;
+            }
+            
+            if (!isValid) {
+                return;
+            }
+            
+            if (isEdit) {
+                const index = parseInt(modal.dataset.index);
+                employees[index] = { matricule, nom, prenom, poste };
+                showNotification('Employé modifié avec succès', 'success');
+            } else {
+                employees.push({ matricule, nom, prenom, poste });
+                showNotification('Employé ajouté avec succès', 'success');
+            }
+            
+            // Save data to sessionStorage
+            sessionStorage.setItem('employees', JSON.stringify(employees));
+            
+            hideEmployeeModal();
+            loadEmployees();
+        }
+        
+        function editEmployee(index) {
+            showEmployeeModal(true, index);
+        }
+        
+        function deleteEmployee(index) {
+            const employee = employees[index];
+            
+            // Check if employee has decisions
+            const hasDecisions = decisions.some(d => d.matricule === employee.matricule);
+            
+            if (hasDecisions) {
+                if (!confirm(`Cet employé a des décisions de sanctions enregistrées. Supprimer l'employé supprimera également son historique. Êtes-vous sûr de vouloir continuer?`)) {
+                    return;
+                }
+                
+                // Remove associated decisions
+                decisions = decisions.filter(d => d.matricule !== employee.matricule);
+                sessionStorage.setItem('decisions', JSON.stringify(decisions));
+            } else {
+                if (!confirm('Êtes-vous sûr de vouloir supprimer cet employé?')) {
+                    return;
+                }
+            }
+            
+            employees.splice(index, 1);
+            sessionStorage.setItem('employees', JSON.stringify(employees));
+            loadEmployees();
+            showNotification('Employé supprimé avec succès', 'info');
+        }
+        
+        function importEmployeesFromJSON(file) {
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                try {
+                    const importedData = JSON.parse(e.target.result);
+                    
+                    if (Array.isArray(importedData)) {
+                        employees = importedData;
+                        sessionStorage.setItem('employees', JSON.stringify(employees));
+                        loadEmployees();
+                        showNotification('Importation réussie!', 'success');
+                    } else {
+                        showNotification('Format invalide. Le fichier doit contenir un tableau d\'employés.', 'error');
+                    }
+                } catch (error) {
+                    showNotification('Erreur lors de l\'importation: ' + error.message, 'error');
+                }
+            };
+            
+            reader.readAsText(file);
+        }
+        
+        function exportEmployeesToJSON() {
+            const dataStr = JSON.stringify(employees, null, 2);
+            const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+            
+            const exportLink = document.createElement('a');
+            exportLink.setAttribute('href', dataUri);
+            exportLink.setAttribute('download', 'employees_export.json');
+            exportLink.setAttribute('target', '_blank');
+            document.body.appendChild(exportLink);
+            exportLink.click();
+            document.body.removeChild(exportLink);
+        }
+        
+        // Sanctions Management
+        function loadSanctions() {
+            const tableBody = document.getElementById('sanctions-list');
+            const fauteSelect = document.getElementById('decision-faute');
+            
+            tableBody.innerHTML = '';
+            fauteSelect.innerHTML = '<option value="">-- Sélectionner une faute --</option>';
+            
+            sanctions.forEach(sanction => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="py-2 px-4 border-b">${sanction.faute}</td>
+                    <td class="py-2 px-4 border-b text-center">${sanction.degre}</td>
+                    <td class="py-2 px-4 border-b">${sanction.sanction}</td>
+                `;
+                tableBody.appendChild(row);
+                
+                const option = document.createElement('option');
+                option.value = sanction.faute;
+                option.textContent = sanction.faute;
+                option.dataset.degre = sanction.degre;
+                option.dataset.sanction = sanction.sanction;
+                fauteSelect.appendChild(option);
+            });
+        }
+        
+        function searchFaute() {
+            const fauteSearch = document.getElementById('search-faute').value.trim();
+            const resultDiv = document.getElementById('sanction-result');
+            const detailsDiv = document.getElementById('sanction-details');
+            
+            if (!fauteSearch) {
+                showNotification('Veuillez entrer une faute', 'warning');
+                return;
+            }
+            
+            // Search for partial match
+            const matchingSanctions = sanctions.filter(s => 
+                s.faute.toLowerCase().includes(fauteSearch.toLowerCase())
+            );
+            
+            if (matchingSanctions.length > 0) {
+                detailsDiv.innerHTML = matchingSanctions.map(sanction => `
+                    <div class="mb-4 p-3 border rounded">
+                        <p><strong>الخطأ:</strong> ${sanction.faute}</p>
+                        <p><strong>الدرجة:</strong> ${sanction.degre}</p>
+                        <p><strong>العقوبة:</strong> ${sanction.sanction}</p>
+                    </div>
+                `).join('');
+                resultDiv.classList.remove('hidden');
+            } else {
+                detailsDiv.innerHTML = `<p class="text-red-500">Aucune faute trouvée avec ce terme</p>`;
+                resultDiv.classList.remove('hidden');
+            }
+        }
+        
+        function importSanctionsFromExcel(file) {
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    
+                    const importedData = XLSX.utils.sheet_to_json(worksheet);
+                    
+                    if (Array.isArray(importedData) && importedData.length > 0) {
+                        // Check if the data has the required columns
+                        const firstRow = importedData[0];
+                        if ('faute' in firstRow && 'degre' in firstRow && 'sanction' in firstRow) {
+                            sanctions = importedData;
+                            sessionStorage.setItem('sanctions', JSON.stringify(sanctions));
+                            loadSanctions();
+                            showNotification('Importation réussie!', 'success');
+                        } else {
+                            showNotification('Format invalide. Le fichier doit contenir les colonnes: faute, degre, sanction', 'error');
+                        }
+                    } else {
+                        showNotification('Aucune donnée trouvée dans le fichier.', 'error');
+                    }
+                } catch (error) {
+                    showNotification('Erreur lors de l\'importation: ' + error.message, 'error');
+                }
+            };
+            
+            reader.readAsArrayBuffer(file);
+        }
+        
+        function exportSanctionsToExcel() {
+            // Create a new workbook
+            const wb = XLSX.utils.book_new();
+            
+            // Convert sanctions to a worksheet
+            const ws = XLSX.utils.json_to_sheet(sanctions);
+            
+            // Add the worksheet to the workbook
+            XLSX.utils.book_append_sheet(wb, ws, "Sanctions");
+            
+            // Generate the Excel file
+            XLSX.writeFile(wb, "sanctions_export.xlsx");
+        }
+        
+        function exportExcelTemplate() {
+            // Create a sample data structure
+            const sampleData = [
+                { faute: "عدم احترام ساعات العمل", degre: "1", sanction: "التنبيه الكتابي" },
+                { faute: "الوصول المتأخر أكثر من مرتين في الشهر دون سبب", degre: "1", sanction: "التوبيخ" }
+            ];
+            
+            // Create a new workbook
+            const wb = XLSX.utils.book_new();
+            
+            // Convert the sample data to a worksheet
+            const ws = XLSX.utils.json_to_sheet(sampleData);
+            
+            // Add the worksheet to the workbook
+            XLSX.utils.book_append_sheet(wb, ws, "Sanctions");
+            
+            // Generate the Excel file
+            XLSX.writeFile(wb, "sanctions_template.xlsx");
+        }
+        
+        // History Management
+        function loadEmployeeHistory() {
+            const historySelect = document.getElementById('history-employee');
+            historySelect.innerHTML = '<option value="">-- Sélectionner un employé --</option>';
+            
+            employees.forEach(employee => {
+                const option = document.createElement('option');
+                option.value = employee.matricule;
+                option.textContent = `${employee.matricule} - ${employee.nom} ${employee.prenom}`;
+                historySelect.appendChild(option);
+            });
+        }
+        
+        function viewEmployeeHistory() {
+            const matricule = document.getElementById('history-employee').value;
+            const historyResult = document.getElementById('history-result');
+            const employeeHistory = document.getElementById('employee-history');
+            const noHistory = document.getElementById('no-history');
+            const employeeNameSpan = document.getElementById('history-employee-name');
+            
+            if (!matricule) {
+                showNotification('Veuillez sélectionner un employé', 'warning');
+                return;
+            }
+            
+            const employee = employees.find(emp => emp.matricule === matricule);
+            if (!employee) {
+                showNotification('Employé non trouvé', 'error');
+                return;
+            }
+            
+            employeeNameSpan.textContent = `${employee.nom} ${employee.prenom} (${employee.matricule})`;
+            
+            // Get employee's decisions
+            const employeeDecisions = decisions.filter(d => d.matricule === matricule);
+            
+            employeeHistory.innerHTML = '';
+            
+            if (employeeDecisions.length > 0) {
+                employeeDecisions.forEach(decision => {
+                    const card = document.createElement('div');
+                    card.className = 'history-card bg-white dark:bg-gray-700 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-600';
+                    
+                    // Determine severity color
+                    let severityColor;
+                    if (decision.duree <= 3) {
+                        severityColor = 'bg-yellow-100 dark:bg-yellow-800 text-yellow-800 dark:text-yellow-100';
+                    } else if (decision.duree <= 10) {
+                        severityColor = 'bg-orange-100 dark:bg-orange-800 text-orange-800 dark:text-orange-100';
+                    } else {
+                        severityColor = 'bg-red-100 dark:bg-red-800 text-red-800 dark:text-red-100';
+                    }
+                    
+                    card.innerHTML = `
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="text-sm ${severityColor} px-2 py-1 rounded">
+                                ${decision.duree} jours
+                            </div>
+                            <div class="text-sm text-gray-500 dark:text-gray-400">
+                                Réf: ${decision.reference}
+                            </div>
+                        </div>
+                        <h4 class="font-semibold mb-1">${decision.motif}</h4>
+                        <p class="text-sm mb-2">${decision.faute}</p>
+                        <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-2">
+                            <span>Du ${formatDate(decision.dateEffective)}</span>
+                            <span>Au ${formatDate(decision.dateRetour)}</span>
+                        </div>
+                    `;
+                    
+                    employeeHistory.appendChild(card);
+                });
+                
+                noHistory.classList.add('hidden');
+            } else {
+                noHistory.classList.remove('hidden');
+            }
+            
+            historyResult.classList.remove('hidden');
+        }
+        
+        // Decision Management
+        function showDecisionForm() {
+            document.getElementById('decision-form').classList.remove('hidden');
+            document.getElementById('sanction-result').classList.add('hidden');
+            
+            // Set current date
+            const today = new Date();
+            const todayStr = today.toISOString().split('T')[0];
+            document.getElementById('decision-date').value = todayStr;
+            
+            // Set current year for reference
+            const currentYear = today.getFullYear();
+            document.getElementById('decision-reference-year').value = currentYear;
+            
+            // Auto-set reference number
+            document.getElementById('decision-reference-num').value = getNextReferenceNumber().toString().padStart(3, '0');
+            
+            // Update effective date (default to tomorrow)
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            document.getElementById('decision-effective-date').value = tomorrow.toISOString().split('T')[0];
+            
+            // Set default duration
+            document.getElementById('decision-duree').value = '1';
+            updateReturnDate();
+            
+            // Focus on employee select
+            setTimeout(() => {
+                document.getElementById('decision-employee').focus();
+            }, 100);
+            
+            // Add event listeners for date calculation
+            document.getElementById('decision-effective-date').addEventListener('change', updateReturnDate);
+            document.getElementById('decision-duree').addEventListener('change', updateReturnDate);
+            document.getElementById('decision-duree').addEventListener('input', updateReturnDate);
+            
+            // Update sanction dropdown based on selected faute
+            document.getElementById('decision-faute').addEventListener('change', function() {
+                const selectedFaute = this.value;
+                const sanctionSelect = document.getElementById('decision-sanction');
+                
+                if (selectedFaute) {
+                    const selectedOption = this.options[this.selectedIndex];
+                    const sanctions = selectedOption.dataset.sanction.split('/').map(s => s.trim());
+                    
+                    sanctionSelect.innerHTML = '<option value="">-- Sélectionner une sanction --</option>';
+                    
+                    sanctions.forEach(sanction => {
+                        const option = document.createElement('option');
+                        option.value = sanction;
+                        option.textContent = sanction;
+                        sanctionSelect.appendChild(option);
+                    });
+                } else {
+                    sanctionSelect.innerHTML = '<option value="">-- Sélectionner une sanction --</option>';
+                }
+            });
+        }
+        
+        function updateReturnDate() {
+            const effectiveDateInput = document.getElementById('decision-effective-date');
+            const dureeInput = document.getElementById('decision-duree');
+            const returnDateInput = document.getElementById('decision-return-date');
+            
+            if (effectiveDateInput.value && dureeInput.value) {
+                const duree = parseInt(dureeInput.value);
+                if (duree > 0) {
+                    const returnDate = calculateReturnDate(effectiveDateInput.value, duree);
+                    returnDateInput.value = returnDate.toISOString().split('T')[0];
+                }
+            }
+        }
+        
+        function generateReferenceAutomatically() {
+            const nextRef = getNextReferenceNumber();
+            const year = new Date().getFullYear();
+            
+            document.getElementById('decision-reference-num').value = nextRef;
+            document.getElementById('decision-reference-year').value = year;
+            
+            showNotification('Référence générée automatiquement', 'info');
+        }
+        
+        function validateDecisionForm() {
+            const requiredFields = [
+                'decision-employee', 'decision-date', 'decision-reference-num', 
+                'decision-reference-year', 'decision-effective-date', 'decision-duree', 
+                'decision-return-date', 'decision-motif', 'decision-faute', 
+                'decision-sanction', 'decision-manquements', 'decision-rh-name'
+            ];
+            
+            let isValid = true;
+            
+            requiredFields.forEach(fieldId => {
+                const field = document.getElementById(fieldId);
+                if (!field.value.trim()) {
+                    field.classList.add('border-red-500');
+                    isValid = false;
+                } else {
+                    field.classList.remove('border-red-500');
+                }
+            });
+            
+            if (!isValid) {
+                showNotification('Veuillez remplir tous les champs obligatoires', 'error');
+            }
+            
+            return isValid;
+        }
+        
+        function previewDecision() {
+            if (!validateDecisionForm()) return;
+            
+            const employeeSelect = document.getElementById('decision-employee');
+            const fauteSelect = document.getElementById('decision-faute');
+            const sanctionSelect = document.getElementById('decision-sanction');
+            const dateInput = document.getElementById('decision-date');
+            const refNumInput = document.getElementById('decision-reference-num');
+            const refYearInput = document.getElementById('decision-reference-year');
+            const effectiveDateInput = document.getElementById('decision-effective-date');
+            const dureeInput = document.getElementById('decision-duree');
+            const returnDateInput = document.getElementById('decision-return-date');
+            const motifInput = document.getElementById('decision-motif');
+            const manquementsInput = document.getElementById('decision-manquements');
+            const rhNameInput = document.getElementById('decision-rh-name');
+            
+            const employee = employees.find(emp => emp.matricule === employeeSelect.value);
+            
+            // Format de la référence: XXX/RH/DCS/YYYY
+            const reference = `${refNumInput.value.padStart(3, '0')}/RH/DCS/${refYearInput.value}`;
+            document.getElementById('preview-reference').textContent = reference;
+            
+            // Formatage des dates
+            const dateOptions = { day: '2-digit', month: '2-digit', year: 'numeric' };
+            const dateDecision = new Date(dateInput.value);
+            const dateEffective = new Date(effectiveDateInput.value);
+            const dateReturn = new Date(returnDateInput.value);
+            
+            // Calcul de la date de fin (date effective + durée - 1 jour)
+            const dateEnd = new Date(dateEffective);
+            dateEnd.setDate(dateEffective.getDate() + parseInt(dureeInput.value) - 1);
+            
+            document.getElementById('preview-date').textContent = dateDecision.toLocaleDateString('fr-FR', dateOptions);
+            document.getElementById('preview-name').textContent = `${employee.nom} ${employee.prenom}`;
+            document.getElementById('preview-matricule').textContent = employee.matricule;
+            document.getElementById('preview-poste').textContent = employee.poste;
+            document.getElementById('preview-motif').textContent = motifInput.value;
+            document.getElementById('preview-duree').textContent = dureeInput.value;
+            
+            // Traitement des manquements (un par ligne)
+            const manquementsList = document.getElementById('preview-manquements-list');
+            manquementsList.innerHTML = '';
+            const manquements = manquementsInput.value.split('\n').filter(m => m.trim() !== '');
+            manquements.forEach(manquement => {
+                const li = document.createElement('li');
+                li.textContent = manquement;
+                manquementsList.appendChild(li);
+            });
+            
+            document.getElementById('preview-effective-date').textContent = dateEffective.toLocaleDateString('fr-FR', dateOptions);
+            document.getElementById('preview-end-date').textContent = dateEnd.toLocaleDateString('fr-FR', dateOptions);
+            document.getElementById('preview-return-date').textContent = dateReturn.toLocaleDateString('fr-FR', dateOptions);
+            document.getElementById('preview-rh-name').textContent = rhNameInput.value;
+            
+            document.getElementById('decision-form').classList.add('hidden');
+            document.getElementById('print-preview').classList.remove('hidden');
+        }
+        
+        function saveDecision() {
+            const employeeSelect = document.getElementById('decision-employee');
+            const fauteSelect = document.getElementById('decision-faute');
+            const sanctionSelect = document.getElementById('decision-sanction');
+            const dateInput = document.getElementById('decision-date');
+            const refNumInput = document.getElementById('decision-reference-num');
+            const refYearInput = document.getElementById('decision-reference-year');
+            const effectiveDateInput = document.getElementById('decision-effective-date');
+            const dureeInput = document.getElementById('decision-duree');
+            const returnDateInput = document.getElementById('decision-return-date');
+            const motifInput = document.getElementById('decision-motif');
+            const manquementsInput = document.getElementById('decision-manquements');
+            const rhNameInput = document.getElementById('decision-rh-name');
+            
+            // Format de la référence: XXX/RH/DCS/YYYY
+            const reference = `${refNumInput.value.padStart(3, '0')}/RH/DCS/${refYearInput.value}`;
+            
+            // Create decision object
+            const decision = {
+                reference: reference,
+                matricule: employeeSelect.value,
+                date: dateInput.value,
+                dateEffective: effectiveDateInput.value,
+                duree: parseInt(dureeInput.value),
+                dateRetour: returnDateInput.value,
+                motif: motifInput.value,
+                faute: fauteSelect.value,
+                sanction: sanctionSelect.value,
+                manquements: manquementsInput.value.split('\n').filter(m => m.trim() !== ''),
+                responsableRH: rhNameInput.value
+            };
+            
+            // Add to decisions array
+            decisions.push(decision);
+            
+            // Save to sessionStorage
+            sessionStorage.setItem('decisions', JSON.stringify(decisions));
+            
+            // Show success notification
+            showNotification('Décision enregistrée avec succès', 'success');
+            
+            // Print the decision
+            printDecision();
+        }
+        
+        function printDecision() {
+            window.print();
+        }
+        
+        function exportPDF() {
+            const { jsPDF } = window.jspdf;
+            
+            // Get the document element
+            const element = document.getElementById('decision-document');
+            
+            // Show loading notification
+            showNotification('Génération du PDF en cours...', 'info');
+            
+            // Use html2canvas to capture the element
+            html2canvas(element).then(canvas => {
+                const imgData = canvas.toDataURL('image/png');
+                
+                // Calculate PDF dimensions based on A4 format
+                const pdfWidth = 210; // mm for A4
+                const pdfHeight = 297; // mm for A4
+                
+                const imgWidth = canvas.width;
+                const imgHeight = canvas.height;
+                const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+                
+                const imgX = (pdfWidth - imgWidth * ratio) / 2;
+                const imgY = 10; // top margin
+                
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
+                
+                // Add footer with page number
+                pdf.setFontSize(10);
+                pdf.setTextColor(100, 100, 100);
+                pdf.text('Page 1', pdfWidth / 2, pdfHeight - 10, { align: 'center' });
+                
+                // Generate filename based on reference and date
+                const refElement = document.getElementById('preview-reference');
+                const empElement = document.getElementById('preview-name');
+                const filename = `Decision_${refElement.textContent.replace(/\//g, '_')}_${empElement.textContent.replace(/\s+/g, '_')}.pdf`;
+                
+                // Save PDF
+                pdf.save(filename);
+                
+                showNotification('PDF exporté avec succès', 'success');
+            });
+        }
+        
+        // Event Listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize dark mode
+            initDarkMode();
+            
+            // Try to load data from sessionStorage
+            try {
+                const storedEmployees = sessionStorage.getItem('employees');
+                if (storedEmployees) {
+                    employees = JSON.parse(storedEmployees);
+                }
+                
+                const storedSanctions = sessionStorage.getItem('sanctions');
+                if (storedSanctions) {
+                    sanctions = JSON.parse(storedSanctions);
+                }
+                
+                const storedDecisions = sessionStorage.getItem('decisions');
+                if (storedDecisions) {
+                    decisions = JSON.parse(storedDecisions);
+                }
+            } catch (error) {
+                console.error('Error loading stored data:', error);
+            }
+            
+            // Load initial data
+            loadEmployees();
+            loadSanctions();
+            loadEmployeeHistory();
+            
+            // Employee search with debounce
+            document.getElementById('search-btn').addEventListener('click', searchEmployee);
+            document.getElementById('search-matricule').addEventListener('keyup', function(e) {
+                if (e.key === 'Enter') {
+                    searchEmployee();
+                }
+            });
+            
+            // Employee filtering
+            document.getElementById('filter-employee').addEventListener('input', debounce(function() {
+                filterEmployees(this.value);
+            }, 300));
+            
+            // Sanction filtering
+            document.getElementById('filter-sanction').addEventListener('input', debounce(function() {
+                filterSanctions(this.value);
+            }, 300));
+            
+            // Faute search with debounce
+            document.getElementById('search-faute-btn').addEventListener('click', searchFaute);
+            document.getElementById('search-faute').addEventListener('keyup', debounce(function(e) {
+                if (e.key === 'Enter') {
+                    searchFaute();
+                }
+            }, 300));
+            
+            // Employee modal
+            document.getElementById('add-employee-btn').addEventListener('click', () => showEmployeeModal());
+            document.getElementById('cancel-employee-btn').addEventListener('click', hideEmployeeModal);
+            document.getElementById('save-employee-btn').addEventListener('click', saveEmployee);
+            
+            // History view
+            document.getElementById('view-history-btn').addEventListener('click', viewEmployeeHistory);
+            
+            // Import/Export
+            document.getElementById('import-json').addEventListener('change', function(e) {
+                if (this.files.length > 0) {
+                    importEmployeesFromJSON(this.files[0]);
+                    this.value = ''; // Reset file input
+                }
+            });
+            
+            document.getElementById('export-employees-btn').addEventListener('click', exportEmployeesToJSON);
+            
+            document.getElementById('import-excel').addEventListener('change', function(e) {
+                if (this.files.length > 0) {
+                    importSanctionsFromExcel(this.files[0]);
+                    this.value = ''; // Reset file input
+                }
+            });
+            
+            document.getElementById('export-sanctions-btn').addEventListener('click', exportSanctionsToExcel);
+            document.getElementById('export-template-btn').addEventListener('click', exportExcelTemplate);
+            
+            // Decision buttons
+            document.getElementById('create-decision-btn').addEventListener('click', showDecisionForm);
+            document.getElementById('auto-reference-btn').addEventListener('click', generateReferenceAutomatically);
+            document.getElementById('cancel-decision-btn').addEventListener('click', function() {
+                document.getElementById('decision-form').classList.add('hidden');
+            });
+            document.getElementById('preview-decision-btn').addEventListener('click', previewDecision);
+            document.getElementById('save-decision-btn').addEventListener('click', function() {
+                if (validateDecisionForm()) {
+                    previewDecision();
+                }
+            });
+            document.getElementById('print-decision-btn').addEventListener('click', printDecision);
+            document.getElementById('export-pdf-btn').addEventListener('click', exportPDF);
+            document.getElementById('back-from-preview-btn').addEventListener('click', function() {
+                document.getElementById('print-preview').classList.add('hidden');
+                document.getElementById('decision-form').classList.remove('hidden');
+            });
+        });
+    </script>
+</body>
+</html>
