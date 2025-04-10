@@ -4463,6 +4463,35 @@
         
         // Initialize dashboard
         initDashboard();
-    </script>
+<script>
+    // Global language settings
+    let currentLang = 'fr'; // Default language
+    let currentSanctionsLang = 'fr'; // Default sanctions language
+
+    // Language toggle button for sanctions table
+    document.getElementById('sanctions-lang-fr').addEventListener('click', function() {
+        currentSanctionsLang = 'fr';
+        document.getElementById('sanctions-lang-fr').classList.add('sanctions-lang-active');
+        document.getElementById('sanctions-lang-ar').classList.remove('sanctions-lang-active');
+        document.getElementById('sanctions-list').classList.remove('rtl');
+        document.getElementById('sanctions-list').classList.add('ltr');
+        loadSanctions();
+    });
+
+    document.getElementById('sanctions-lang-ar').addEventListener('click', function() {
+        currentSanctionsLang = 'ar';
+        document.getElementById('sanctions-lang-ar').classList.add('sanctions-lang-active');
+        document.getElementById('sanctions-lang-fr').classList.remove('sanctions-lang-active');
+        document.getElementById('sanctions-list').classList.remove('ltr');
+        document.getElementById('sanctions-list').classList.add('rtl');
+        loadSanctions();
+    });
+
+    // Placeholder function for loading sanctions
+    function loadSanctions() {
+        console.log(`Loading sanctions in ${currentSanctionsLang} language.`);
+        // Add logic to load sanctions based on the selected language
+    }
+</script>
 </body>
 </html>
