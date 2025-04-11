@@ -232,6 +232,7 @@
             border-radius: 0.25rem;
             margin-left: 0.5rem;
             font-size: 0.75rem;
+            transition: all 0.3s ease;
         }
         .sync-indicator.success {
             background-color: rgba(52, 211, 153, 0.1);
@@ -244,6 +245,30 @@
         .sync-indicator.syncing {
             background-color: rgba(59, 130, 246, 0.1);
             color: #3B82F6;
+        }
+        /* Progress bar for syncing */
+        .sync-progress-container {
+            width: 100%;
+            height: 4px;
+            background-color: #e5e7eb;
+            border-radius: 2px;
+            margin-top: 4px;
+            overflow: hidden;
+        }
+        .sync-progress-bar {
+            height: 100%;
+            background-color: #3B82F6;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        /* Pulsing effect for sync icon */
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+        .sync-pulse {
+            animation: pulse 1.5s infinite;
         }
     </style>
 </head>
@@ -265,7 +290,7 @@
             <div class="flex items-center space-x-3">
                 <!-- Auto-Sync Status Indicator -->
                 <div id="sync-status" class="sync-indicator hidden">
-                    <i class="fas fa-sync-alt mr-1"></i>
+                    <i id="sync-icon" class="fas fa-sync-alt mr-1"></i>
                     <span id="sync-text">Synchronisé</span>
                 </div>
                 
@@ -1570,6 +1595,31 @@
     </div>
     
     <script>
+        // Détection du mode sombre
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.classList.add('dark');
+            document.getElementById('darkModeToggle').checked = true;
+        }
+
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
+            if (event.matches) {
+                document.documentElement.classList.add('dark');
+                document.getElementById('darkModeToggle').checked = true;
+            } else {
+                document.documentElement.classList.remove('dark');
+                document.getElementById('darkModeToggle').checked = false;
+            }
+        });
+
+        // Activation manuelle du mode sombre
+        document.getElementById('darkModeToggle').addEventListener('change', function() {
+            if (this.checked) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        });
+
         // Synchronisation configuration and state
         let syncConfig = {
             excel: {
@@ -1588,10 +1638,16 @@
         
         let syncTimers = {
             excel: null,
-            html: null
+            html: null,
+            excelDebounce: null,
+            htmlDebounce: null
         };
         
         let syncHistory = [];
+        let currentSyncOperations = {
+            excel: false,
+            html: false
+        };
         
         // Load sync configuration from storage
         function loadSyncConfig() {
@@ -1608,6 +1664,10 @@
                     document.getElementById('html-sync-enabled').checked = syncConfig.html.enabled;
                     document.getElementById('html-sync-path-input').value = syncConfig.html.path;
                     document.getElementById('html-sync-interval').value = syncConfig.html.interval;
+                    
+                    // Update automatically sync options in dropdown
+                    document.getElementById('auto-sync-excel').checked = syncConfig.excel.enabled;
+                    document.getElementById('auto-sync-html').checked = syncConfig.html.enabled;
                     
                     // Initialize sync timers based on config
                     initSyncTimers();
@@ -1626,6 +1686,31 @@
             }
         }
         
+        // Sync auto toggle handlers from dropdown
+        document.getElementById('auto-sync-excel').addEventListener('change', function() {
+            syncConfig.excel.enabled = this.checked;
+            localStorage.setItem('syncConfig', JSON.stringify(syncConfig));
+            initSyncTimers();
+            updateSyncStatus();
+            if (this.checked) {
+                showNotification('Synchronisation Excel automatique activée', 'success');
+            } else {
+                showNotification('Synchronisation Excel automatique désactivée', 'info');
+            }
+        });
+        
+        document.getElementById('auto-sync-html').addEventListener('change', function() {
+            syncConfig.html.enabled = this.checked;
+            localStorage.setItem('syncConfig', JSON.stringify(syncConfig));
+            initSyncTimers();
+            updateSyncStatus();
+            if (this.checked) {
+                showNotification('Synchronisation HTML automatique activée', 'success');
+            } else {
+                showNotification('Synchronisation HTML automatique désactivée', 'info');
+            }
+        });
+        
         // Save sync configuration to storage
         function saveSyncConfig() {
             try {
@@ -1637,6 +1722,10 @@
                 syncConfig.html.enabled = document.getElementById('html-sync-enabled').checked;
                 syncConfig.html.path = document.getElementById('html-sync-path-input').value;
                 syncConfig.html.interval = document.getElementById('html-sync-interval').value;
+                
+                // Update auto-sync checkbox in dropdown
+                document.getElementById('auto-sync-excel').checked = syncConfig.excel.enabled;
+                document.getElementById('auto-sync-html').checked = syncConfig.html.enabled;
                 
                 // Save to local storage
                 localStorage.setItem('syncConfig', JSON.stringify(syncConfig));
@@ -1670,19 +1759,35 @@
                 syncTimers.html = null;
             }
             
-            // Set up Excel sync timer if enabled and not manual
-            if (syncConfig.excel.enabled && syncConfig.excel.interval !== 'manual') {
+            // Set up Excel sync timer if enabled and not manual or realtime
+            if (syncConfig.excel.enabled && syncConfig.excel.interval !== 'manual' && syncConfig.excel.interval !== 'realtime') {
                 const interval = getIntervalInMs(syncConfig.excel.interval);
                 if (interval > 0) {
-                    syncTimers.excel = setInterval(() => syncToExcel(), interval);
+                    syncTimers.excel = setInterval(() => {
+                        if (!currentSyncOperations.excel) {
+                            console.log(`Scheduled Excel sync at ${new Date().toLocaleTimeString()}`);
+                            syncToExcel();
+                        } else {
+                            console.log('Skipping scheduled Excel sync as one is already in progress');
+                        }
+                    }, interval);
+                    console.log(`Excel sync timer set to ${interval}ms (${syncConfig.excel.interval})`);
                 }
             }
             
-            // Set up HTML sync timer if enabled and not manual
-            if (syncConfig.html.enabled && syncConfig.html.interval !== 'manual') {
+            // Set up HTML sync timer if enabled and not manual or realtime
+            if (syncConfig.html.enabled && syncConfig.html.interval !== 'manual' && syncConfig.html.interval !== 'realtime') {
                 const interval = getIntervalInMs(syncConfig.html.interval);
                 if (interval > 0) {
-                    syncTimers.html = setInterval(() => syncToHtml(), interval);
+                    syncTimers.html = setInterval(() => {
+                        if (!currentSyncOperations.html) {
+                            console.log(`Scheduled HTML sync at ${new Date().toLocaleTimeString()}`);
+                            syncToHtml();
+                        } else {
+                            console.log('Skipping scheduled HTML sync as one is already in progress');
+                        }
+                    }, interval);
+                    console.log(`HTML sync timer set to ${interval}ms (${syncConfig.html.interval})`);
                 }
             }
         }
@@ -1709,6 +1814,7 @@
         function updateSyncStatus() {
             const syncStatus = document.getElementById('sync-status');
             const syncText = document.getElementById('sync-text');
+            const syncIcon = document.getElementById('sync-icon');
             
             // Show sync status if either Excel or HTML sync is enabled
             if (syncConfig.excel.enabled || syncConfig.html.enabled) {
@@ -1726,10 +1832,14 @@
                     syncText.textContent = `Synchronisé ${formatTimeAgo(lastSyncDate)}`;
                     syncStatus.classList.remove('error', 'syncing');
                     syncStatus.classList.add('success');
+                    syncIcon.classList.remove('fa-exclamation-circle', 'fa-sync-alt', 'sync-pulse');
+                    syncIcon.classList.add('fa-check-circle');
                 } else {
                     syncText.textContent = 'Jamais synchronisé';
                     syncStatus.classList.remove('success', 'syncing');
                     syncStatus.classList.add('error');
+                    syncIcon.classList.remove('fa-check-circle', 'fa-sync-alt', 'sync-pulse');
+                    syncIcon.classList.add('fa-exclamation-circle');
                 }
             } else {
                 syncStatus.classList.add('hidden');
@@ -1761,7 +1871,7 @@
                     htmlStatus.className = 'px-2 py-1 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded text-sm flex items-center';
                     
                     if (syncConfig.html.lastSync) {
-                        document.getElementById('html-last-sync').textContent = `Dernière sync: ${formatDate(new Date(syncConfig.html.lastSync))}`;
+                        document.getElementById('html-last-sync').textContent = `Dernière sync: ${formatDate(new Date(syncConfig.html.lastSync))} ${new Date(syncConfig.html.lastSync).toLocaleTimeString()}`;
                     }
                     
                     document.getElementById('html-sync-path').textContent = syncConfig.html.path || 'Non configuré';
@@ -1806,12 +1916,23 @@
                 return;
             }
             
+            // Set sync operation flag to prevent multiple syncs
+            if (currentSyncOperations.excel) {
+                console.log('Excel sync already in progress, skipping');
+                return;
+            }
+            currentSyncOperations.excel = true;
+            
             // Show syncing status
             const syncStatus = document.getElementById('sync-status');
             const syncText = document.getElementById('sync-text');
+            const syncIcon = document.getElementById('sync-icon');
+            
             syncStatus.classList.remove('hidden', 'success', 'error');
             syncStatus.classList.add('syncing');
-            syncText.textContent = 'Synchronisation...';
+            syncText.textContent = 'Synchronisation Excel...';
+            syncIcon.classList.remove('fa-check-circle', 'fa-exclamation-circle');
+            syncIcon.classList.add('fa-sync-alt', 'sync-pulse');
             
             try {
                 // Create workbook
@@ -1888,10 +2009,10 @@
                 const questionnairesWs = XLSX.utils.aoa_to_sheet(questionnairesData);
                 XLSX.utils.book_append_sheet(wb, questionnairesWs, 'Questionnaires');
                 
-                // Try to write file
-                // In a browser environment, this will download the file
-                // In actual implementation, we'd need server-side code to save to a specific path
-                XLSX.writeFile(wb, syncConfig.excel.path);
+                // Try to write file - in browser this will download the file
+                // For a true auto-sync experience, this would need server-side integration
+                const filename = syncConfig.excel.path.split('/').pop() || 'hr_data_sync.xlsx';
+                XLSX.writeFile(wb, filename);
                 
                 // Update sync status
                 syncConfig.excel.lastSync = new Date().toISOString();
@@ -1913,9 +2034,14 @@
                 // Update status indicator
                 syncStatus.classList.remove('syncing');
                 syncStatus.classList.add('error');
+                syncIcon.classList.remove('fa-sync-alt', 'sync-pulse');
+                syncIcon.classList.add('fa-exclamation-circle');
                 syncText.textContent = 'Erreur de synchronisation';
                 
                 showNotification('Erreur lors de la synchronisation Excel: ' + error.message, 'error');
+            } finally {
+                // Reset sync operation flag
+                currentSyncOperations.excel = false;
             }
         }
         
@@ -1926,12 +2052,23 @@
                 return;
             }
             
+            // Set sync operation flag to prevent multiple syncs
+            if (currentSyncOperations.html) {
+                console.log('HTML sync already in progress, skipping');
+                return;
+            }
+            currentSyncOperations.html = true;
+            
             // Show syncing status
             const syncStatus = document.getElementById('sync-status');
             const syncText = document.getElementById('sync-text');
+            const syncIcon = document.getElementById('sync-icon');
+            
             syncStatus.classList.remove('hidden', 'success', 'error');
             syncStatus.classList.add('syncing');
-            syncText.textContent = 'Synchronisation...';
+            syncText.textContent = 'Synchronisation HTML...';
+            syncIcon.classList.remove('fa-check-circle', 'fa-exclamation-circle');
+            syncIcon.classList.add('fa-sync-alt', 'sync-pulse');
             
             try {
                 // Create HTML content
@@ -1993,11 +2130,20 @@
                             background-color: #cce5ff;
                             color: #004085;
                         }
+                        .sync-info {
+                            background-color: #f8f9fa;
+                            border-left: 4px solid #5D5CDE;
+                            padding: 10px 15px;
+                            margin-bottom: 20px;
+                        }
                     </style>
                 </head>
                 <body>
                     <h1>Données de Gestion RH - Synchronisées</h1>
-                    <p class="last-sync">Dernière synchronisation: ${formatDate(new Date())} ${new Date().toLocaleTimeString()}</p>
+                    <div class="sync-info">
+                        <p class="last-sync">Dernière synchronisation: ${formatDate(new Date())} ${new Date().toLocaleTimeString()}</p>
+                        <p>Ce fichier est généré automatiquement. Ne pas modifier manuellement.</p>
+                    </div>
                     
                     <h2>Employés (${employees.length})</h2>
                     <table>
@@ -2172,12 +2318,14 @@
                 htmlContent += `
                         </tbody>
                     </table>
+                    <div class="sync-info">
+                        <p>Généré le ${formatDate(new Date())} à ${new Date().toLocaleTimeString()}</p>
+                    </div>
                 </body>
                 </html>
                 `;
                 
                 // Create a Blob and download link
-                // In actual implementation, we'd need server-side code to save to a specific path
                 const blob = new Blob([htmlContent], { type: 'text/html' });
                 const url = URL.createObjectURL(blob);
                 const link = document.createElement('a');
@@ -2189,8 +2337,10 @@
                 link.click();
                 
                 // Clean up
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
+                setTimeout(() => {
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                }, 100);
                 
                 // Update sync status
                 syncConfig.html.lastSync = new Date().toISOString();
@@ -2212,9 +2362,14 @@
                 // Update status indicator
                 syncStatus.classList.remove('syncing');
                 syncStatus.classList.add('error');
+                syncIcon.classList.remove('fa-sync-alt', 'sync-pulse');
+                syncIcon.classList.add('fa-exclamation-circle');
                 syncText.textContent = 'Erreur de synchronisation';
                 
                 showNotification('Erreur lors de la synchronisation HTML: ' + error.message, 'error');
+            } finally {
+                // Reset sync operation flag
+                currentSyncOperations.html = false;
             }
         }
         
@@ -2288,7 +2443,7 @@
                 const typeIcon = entry.type === 'excel' ? 'fa-file-excel text-green-600' : 'fa-file-code text-blue-600';
                 
                 tableBody.innerHTML += `
-                    <tr class="border-b dark:border-gray-600">
+                    <tr class="border-b dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                         <td class="py-2 px-4">${formatDate(date)} ${date.toLocaleTimeString()}</td>
                         <td class="py-2 px-4">
                             <span class="flex items-center">
@@ -2304,7 +2459,7 @@
                             ${entry.errorMsg ? `<p class="text-xs text-red-500 mt-1">${entry.errorMsg}</p>` : ''}
                         </td>
                         <td class="py-2 px-4">
-                            <button class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300" data-id="${entry.id}">
+                            <button class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300" data-id="${entry.id}" data-type="${entry.type}">
                                 <i class="fas fa-redo"></i>
                             </button>
                         </td>
@@ -2316,12 +2471,12 @@
             document.querySelectorAll('#sync-history-list button').forEach(button => {
                 button.addEventListener('click', function() {
                     const entryId = this.dataset.id;
-                    const entry = syncHistory.find(e => e.id === entryId);
+                    const entryType = this.dataset.type;
                     
-                    if (entry) {
-                        if (entry.type === 'excel') {
+                    if (entryType) {
+                        if (entryType === 'excel') {
                             syncToExcel();
-                        } else if (entry.type === 'html') {
+                        } else if (entryType === 'html') {
                             syncToHtml();
                         }
                     }
@@ -2355,6 +2510,13 @@
                                         ? `Dernière mise à jour: ${formatDate(new Date(syncConfig.excel.lastSync))} ${new Date(syncConfig.excel.lastSync).toLocaleTimeString()}`
                                         : 'Jamais synchronisé'}
                                 </p>
+                                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                    Mode: ${syncConfig.excel.interval === 'realtime' 
+                                        ? 'Temps réel' 
+                                        : syncConfig.excel.interval === 'manual' 
+                                            ? 'Manuel' 
+                                            : `Toutes les ${syncConfig.excel.interval}`}
+                                </p>
                             </div>
                         </div>
                         <button class="sync-excel-now-btn bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm">
@@ -2387,6 +2549,13 @@
                                     ${syncConfig.html.lastSync 
                                         ? `Dernière mise à jour: ${formatDate(new Date(syncConfig.html.lastSync))} ${new Date(syncConfig.html.lastSync).toLocaleTimeString()}`
                                         : 'Jamais synchronisé'}
+                                </p>
+                                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                    Mode: ${syncConfig.html.interval === 'realtime' 
+                                        ? 'Temps réel' 
+                                        : syncConfig.html.interval === 'manual' 
+                                            ? 'Manuel' 
+                                            : `Toutes les ${syncConfig.html.interval}`}
                                 </p>
                             </div>
                         </div>
@@ -2445,9 +2614,13 @@
             // Update sync status indicator to show pending sync
             const syncStatus = document.getElementById('sync-status');
             const syncText = document.getElementById('sync-text');
+            const syncIcon = document.getElementById('sync-icon');
+            
             if (syncStatus && !syncStatus.classList.contains('hidden')) {
                 syncStatus.classList.remove('success', 'error');
                 syncStatus.classList.add('syncing');
+                syncIcon.classList.remove('fa-check-circle', 'fa-exclamation-circle');
+                syncIcon.classList.add('fa-sync-alt', 'sync-pulse');
                 syncText.textContent = 'Synchronisation en cours...';
             }
             
@@ -2459,12 +2632,16 @@
                 }
                 
                 syncTimers.excelDebounce = setTimeout(() => {
-                    try {
-                        syncToExcel();
-                        console.log('Auto Excel sync completed for:', dataType);
-                    } catch (error) {
-                        console.error('Auto Excel sync error:', error);
-                        showNotification('Erreur lors de la synchronisation Excel automatique', 'error');
+                    if (!currentSyncOperations.excel) {
+                        try {
+                            syncToExcel();
+                            console.log(`Auto Excel sync completed for: ${dataType}`);
+                        } catch (error) {
+                            console.error('Auto Excel sync error:', error);
+                            showNotification('Erreur lors de la synchronisation Excel automatique', 'error');
+                        }
+                    } else {
+                        console.log('Skipping Auto Excel sync as one is already in progress');
                     }
                 }, 2000); // 2 second debounce
             }
@@ -2477,12 +2654,16 @@
                 }
                 
                 syncTimers.htmlDebounce = setTimeout(() => {
-                    try {
-                        syncToHtml();
-                        console.log('Auto HTML sync completed for:', dataType);
-                    } catch (error) {
-                        console.error('Auto HTML sync error:', error);
-                        showNotification('Erreur lors de la synchronisation HTML automatique', 'error');
+                    if (!currentSyncOperations.html) {
+                        try {
+                            syncToHtml();
+                            console.log(`Auto HTML sync completed for: ${dataType}`);
+                        } catch (error) {
+                            console.error('Auto HTML sync error:', error);
+                            showNotification('Erreur lors de la synchronisation HTML automatique', 'error');
+                        }
+                    } else {
+                        console.log('Skipping Auto HTML sync as one is already in progress');
                     }
                 }, 2000); // 2 second debounce
             }
@@ -2673,6 +2854,12 @@
         // Questionnaires storage
         let questionnaires = [];
         
+        // Current language (fr or ar) for UI
+        let currentLang = 'fr';
+        
+        // Current language for sanctions display (fr or ar)
+        let currentSanctionsLang = 'fr';
+        
         // Utility Functions
         // Debounce function for input events
         function debounce(func, wait) {
@@ -2694,17 +2881,22 @@
                 case 'success':
                     bgColor = 'bg-green-500';
                     textColor = 'text-white';
-                    icon = '✔️';
+                    icon = '<i class="fas fa-check-circle mr-2"></i>';
                     break;
                 case 'error':
                     bgColor = 'bg-red-500';
                     textColor = 'text-white';
-                    icon = '❌';
+                    icon = '<i class="fas fa-exclamation-circle mr-2"></i>';
                     break;
                 case 'warning':
                     bgColor = 'bg-yellow-500';
                     textColor = 'text-black';
-                    icon = '⚠️';
+                    icon = '<i class="fas fa-exclamation-triangle mr-2"></i>';
+                    break;
+                case 'info':
+                    bgColor = 'bg-blue-500';
+                    textColor = 'text-white';
+                    icon = '<i class="fas fa-info-circle mr-2"></i>';
                     break;
                 default:
                     bgColor = 'bg-gray-500';
@@ -2720,7 +2912,10 @@
             
             // Remove notification after 5 seconds
             setTimeout(() => {
-                notification.remove();
+                notification.classList.add('fadeOut');
+                setTimeout(() => {
+                    notification.remove();
+                }, 300);
             }, 5000);
         }
         
@@ -4362,6 +4557,7 @@
         }
         
         // Event Listeners
+        // Tab switching events
         document.getElementById('tab-dashboard').addEventListener('click', () => switchTab('tab-dashboard'));
         document.getElementById('tab-employes').addEventListener('click', () => switchTab('tab-employes'));
         document.getElementById('tab-sanctions').addEventListener('click', () => switchTab('tab-sanctions'));
@@ -4370,24 +4566,29 @@
         document.getElementById('tab-rappels').addEventListener('click', () => switchTab('tab-rappels'));
         document.getElementById('tab-fichiers').addEventListener('click', () => switchTab('tab-fichiers'));
         
+        // Employee management events
         document.getElementById('search-matricule-btn').addEventListener('click', searchEmployee);
         document.getElementById('filter-employee').addEventListener('input', debounce((e) => filterEmployees(e.target.value), 300));
         document.getElementById('add-employee-btn').addEventListener('click', () => showEmployeeModal());
         document.getElementById('cancel-employee-btn').addEventListener('click', hideEmployeeModal);
         document.getElementById('save-employee-btn').addEventListener('click', saveEmployee);
         
+        // Sanctions management events
         document.getElementById('search-faute-btn').addEventListener('click', searchFaute);
         document.getElementById('filter-sanction').addEventListener('input', debounce((e) => filterSanctions(e.target.value), 300));
         
+        // History management events
         document.getElementById('view-history-btn').addEventListener('click', viewEmployeeHistory);
         document.getElementById('filter-history').addEventListener('input', debounce((e) => filterHistory(e.target.value), 300));
         document.getElementById('export-history-btn').addEventListener('click', exportHistoryToExcel);
         
+        // Decision management events
         document.getElementById('create-decision-btn').addEventListener('click', () => showDecisionForm());
         document.getElementById('auto-reference-btn').addEventListener('click', generateReferenceAutomatically);
         document.getElementById('cancel-decision-btn').addEventListener('click', () => switchTab('tab-sanctions'));
         document.getElementById('save-decision-btn').addEventListener('click', saveDecision);
         
+        // Questionnaire management events
         document.getElementById('search-questionnaire-btn').addEventListener('click', () => {
             const searchTerm = document.getElementById('search-questionnaire').value.trim().toLowerCase();
             const filteredQuestionnaires = questionnaires.filter(q => 
@@ -4440,58 +4641,180 @@
         });
         
         document.getElementById('create-questionnaire-btn').addEventListener('click', () => showQuestionnaireForm());
+        document.getElementById('create-first-questionnaire-btn')?.addEventListener('click', () => showQuestionnaireForm());
         document.getElementById('save-questionnaire-btn').addEventListener('click', saveQuestionnaire);
         document.getElementById('back-from-questionnaire-btn').addEventListener('click', () => switchTab('tab-questionnaire'));
         
+        // Reminders management events
         document.getElementById('mark-all-read-btn').addEventListener('click', markAllRemindersAsRead);
         
-        document.getElementById('syncOptionsToggle').addEventListener('click', toggleSyncOptionsDropdown);
+        // Sync management events
         document.getElementById('sync-now-btn').addEventListener('click', () => {
-            syncToExcel();
-            syncToHtml();
+            if (syncConfig.excel.enabled) syncToExcel();
+            if (syncConfig.html.enabled) syncToHtml();
+            document.getElementById('syncOptionsDropdown').classList.add('hidden');
         });
-        document.getElementById('configure-sync-btn').addEventListener('click', showSyncConfigModal);
+        document.getElementById('syncOptionsToggle').addEventListener('click', toggleSyncOptionsDropdown);
+        document.getElementById('configure-sync-btn').addEventListener('click', () => {
+            showSyncConfigModal();
+            document.getElementById('syncOptionsDropdown').classList.add('hidden');
+        });
+        document.getElementById('edit-sync-config-btn')?.addEventListener('click', showSyncConfigModal);
         document.getElementById('cancel-sync-config-btn').addEventListener('click', hideSyncConfigModal);
         document.getElementById('save-sync-config-btn').addEventListener('click', saveSyncConfig);
         
-        // Load initial data
-        loadSyncConfig();
-        loadEmployees();
-        loadSanctions();
-        loadEmployeeHistory();
-        loadReminders();
+        // Language switcher
+        document.getElementById('languageToggle').addEventListener('click', function() {
+            document.getElementById('languageDropdown').classList.toggle('hidden');
+        });
         
-        // Initialize dashboard
-        initDashboard();
-<script>
-    // Global language settings
-    let currentLang = 'fr'; // Default language
-    let currentSanctionsLang = 'fr'; // Default sanctions language
-
-    // Language toggle button for sanctions table
-    document.getElementById('sanctions-lang-fr').addEventListener('click', function() {
-        currentSanctionsLang = 'fr';
-        document.getElementById('sanctions-lang-fr').classList.add('sanctions-lang-active');
-        document.getElementById('sanctions-lang-ar').classList.remove('sanctions-lang-active');
-        document.getElementById('sanctions-list').classList.remove('rtl');
-        document.getElementById('sanctions-list').classList.add('ltr');
-        loadSanctions();
-    });
-
-    document.getElementById('sanctions-lang-ar').addEventListener('click', function() {
-        currentSanctionsLang = 'ar';
-        document.getElementById('sanctions-lang-ar').classList.add('sanctions-lang-active');
-        document.getElementById('sanctions-lang-fr').classList.remove('sanctions-lang-active');
-        document.getElementById('sanctions-list').classList.remove('ltr');
-        document.getElementById('sanctions-list').classList.add('rtl');
-        loadSanctions();
-    });
-
-    // Placeholder function for loading sanctions
-    function loadSanctions() {
-        console.log(`Loading sanctions in ${currentSanctionsLang} language.`);
-        // Add logic to load sanctions based on the selected language
-    }
-</script>
+        document.getElementById('lang-fr').addEventListener('click', function() {
+            currentLang = 'fr';
+            document.getElementById('currentLang').textContent = 'Français';
+            document.getElementById('languageDropdown').classList.add('hidden');
+            // Here you would update all UI text to French
+        });
+        
+        document.getElementById('lang-ar').addEventListener('click', function() {
+            currentLang = 'ar';
+            document.getElementById('currentLang').textContent = 'العربية';
+            document.getElementById('languageDropdown').classList.add('hidden');
+            // Here you would update all UI text to Arabic
+        });
+        
+        // Sanctions language switcher
+        document.getElementById('sanctions-lang-fr').addEventListener('click', function() {
+            currentSanctionsLang = 'fr';
+            // Update UI
+            document.getElementById('sanctions-lang-fr').classList.add('sanctions-lang-active');
+            document.getElementById('sanctions-lang-ar').classList.remove('sanctions-lang-active');
+            document.getElementById('sanctions-list').classList.remove('rtl');
+            document.getElementById('sanctions-list').classList.add('ltr');
+            // Reload sanctions
+            loadSanctions();
+        });
+        
+        document.getElementById('sanctions-lang-ar').addEventListener('click', function() {
+            currentSanctionsLang = 'ar';
+            // Update UI
+            document.getElementById('sanctions-lang-ar').classList.add('sanctions-lang-active');
+            document.getElementById('sanctions-lang-fr').classList.remove('sanctions-lang-active');
+            document.getElementById('sanctions-list').classList.remove('ltr');
+            document.getElementById('sanctions-list').classList.add('rtl');
+            // Reload sanctions
+            loadSanctions();
+        });
+        
+        // Questionnaire language toggle
+        document.getElementById('toggle-questionnaire-language-btn')?.addEventListener('click', function() {
+            const frVersion = document.getElementById('questionnaire-fr');
+            const arVersion = document.getElementById('questionnaire-ar');
+            const toggleButton = document.getElementById('toggle-questionnaire-language-text');
+            
+            if (frVersion.classList.contains('hidden')) {
+                // Switch to French
+                frVersion.classList.remove('hidden');
+                arVersion.classList.add('hidden');
+                toggleButton.textContent = 'Version Arabe';
+            } else {
+                // Switch to Arabic
+                frVersion.classList.add('hidden');
+                arVersion.classList.remove('hidden');
+                toggleButton.textContent = 'Version Française';
+            }
+        });
+        
+        // Decision preview language toggle
+        document.getElementById('toggle-language-btn')?.addEventListener('click', function() {
+            const frVersion = document.getElementById('decision-document-fr');
+            const arVersion = document.getElementById('decision-document-ar');
+            const toggleButton = document.getElementById('toggle-language-text');
+            
+            if (frVersion.classList.contains('hidden')) {
+                // Switch to French
+                frVersion.classList.remove('hidden');
+                arVersion.classList.add('hidden');
+                toggleButton.textContent = 'Version Arabe';
+            } else {
+                // Switch to Arabic
+                frVersion.classList.add('hidden');
+                arVersion.classList.remove('hidden');
+                toggleButton.textContent = 'Version Française';
+            }
+        });
+        
+        // Handle document clicks for dropdown menus
+        document.addEventListener('click', function(e) {
+            // Close language dropdown when clicking outside
+            if (!e.target.closest('#languageToggle') && !e.target.closest('#languageDropdown')) {
+                document.getElementById('languageDropdown').classList.add('hidden');
+            }
+            
+            // Close sync options dropdown when clicking outside
+            if (!e.target.closest('#syncOptionsToggle') && !e.target.closest('#syncOptionsDropdown')) {
+                document.getElementById('syncOptionsDropdown').classList.add('hidden');
+            }
+        });
+        
+        // Initialization
+        function initialize() {
+            // Load data from storage
+            try {
+                const storedEmployees = localStorage.getItem('employees');
+                if (storedEmployees) {
+                    employees = JSON.parse(storedEmployees);
+                }
+                
+                const storedSanctions = localStorage.getItem('sanctions');
+                if (storedSanctions) {
+                    sanctions = JSON.parse(storedSanctions);
+                }
+                
+                const storedDecisions = localStorage.getItem('decisions');
+                if (storedDecisions) {
+                    decisions = JSON.parse(storedDecisions);
+                }
+                
+                const storedQuestionnaires = localStorage.getItem('questionnaires');
+                if (storedQuestionnaires) {
+                    questionnaires = JSON.parse(storedQuestionnaires);
+                }
+                
+                const storedReminders = localStorage.getItem('reminders');
+                if (storedReminders) {
+                    reminders = JSON.parse(storedReminders);
+                }
+                
+                // Load sync configuration
+                loadSyncConfig();
+                
+                // Load UI components
+                loadEmployees();
+                loadSanctions();
+                loadEmployeeHistory();
+                loadReminders();
+                
+                // Initialize dashboard
+                initDashboard();
+                
+                // Generate reminders
+                generateReminders();
+                
+                // Update reminders count
+                updateRemindersCount();
+                
+                // Show dashboard as default
+                switchTab('tab-dashboard');
+                
+                console.log("Application initialized successfully");
+            } catch (error) {
+                console.error("Error during initialization:", error);
+                showNotification("Erreur lors de l'initialisation de l'application", "error");
+            }
+        }
+        
+        // Start the application
+        initialize();
+    </script>
 </body>
 </html>
